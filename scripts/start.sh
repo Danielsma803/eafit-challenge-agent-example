@@ -38,7 +38,7 @@ echo "  Service name    : ${SERVICE_NAME}"
 echo "  NGROK_DOMAIN    : ${NGROK_DOMAIN:-<not set>}"
 echo ""
 
-if [ -z "${OPENAI_API_KEY:-}" ]; then
+if [ "${LLM_PROVIDER:-}" = "openai" ] && [ -z "${OPENAI_API_KEY:-}" ]; then
   echo "WARNING: OPENAI_API_KEY is not set. The chatbot LLM will not work."
 fi
 

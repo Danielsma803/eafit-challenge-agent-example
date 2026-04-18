@@ -66,6 +66,13 @@ if ! command -v veranad &> /dev/null; then
   log "veranad not found — downloading..."
   VERANAD_VERSION="${VERANAD_VERSION:-v0.9.4}"
   PLATFORM="$(uname -s | tr '[:upper:]' '[:lower:]')"
+
+  case "$PLATFORM" in
+    mingw*|msys*)
+      PLATFORM="linux"
+      ;;
+  esac
+  
   ARCH="$(uname -m)"
   case "$ARCH" in
     x86_64)  ARCH="amd64" ;;
@@ -113,13 +120,30 @@ fi
 log "Starting ngrok tunnel on port ${VS_AGENT_PUBLIC_PORT}..."
 pkill -f "ngrok http ${VS_AGENT_PUBLIC_PORT}" 2>/dev/null || true
 sleep 1
-ngrok http "$VS_AGENT_PUBLIC_PORT" --log=stdout > /tmp/ngrok-example-agent.log 2>&1 &
-NGROK_PID=$!
-sleep 5
 
-NGROK_URL=$(curl -sf http://localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url // empty')
+# Use a unique log file to avoid "Permission denied" issues if the file is locked or owned by another user
+NGROK_LOG="/tmp/ngrok-example-agent-$$.log"
+ngrok http "$VS_AGENT_PUBLIC_PORT" --log=stdout > "$NGROK_LOG" 2>&1 &
+NGROK_PID=$!
+
+# Wait for ngrok to initialize (up to 15s)
+log "Waiting for ngrok tunnel to be ready..."
+NGROK_URL=""
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt 15 ]; do
+  # We use '|| true' because 'set -e' and 'pipefail' would otherwise exit the script
+  # when curl fails to connect to the ngrok API during startup.
+  NGROK_URL=$(curl -sf http://localhost:4040/api/tunnels 2>/dev/null | jq -r '.tunnels[0].public_url // empty' 2>/dev/null || true)
+  if [ -n "$NGROK_URL" ] && [ "$NGROK_URL" != "null" ]; then
+    break
+  fi
+  sleep 1
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+done
+
 if [ -z "$NGROK_URL" ]; then
-  err "Failed to get ngrok URL. Is ngrok installed and authenticated?"
+  err "Failed to get ngrok URL after 15s. Is ngrok installed and authenticated?"
+  [ -f "$NGROK_LOG" ] && err "Last 10 lines of ngrok log:" && tail -n 10 "$NGROK_LOG" >&2
   exit 1
 fi
 NGROK_DOMAIN=$(echo "$NGROK_URL" | sed 's|https://||')

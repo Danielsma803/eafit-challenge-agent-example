@@ -396,10 +396,10 @@ discover_active_root_perm() {
 
   while [ $attempt -lt $max_retries ]; do
     attempt=$((attempt + 1))
-    http_code=$(curl -s -o /tmp/indexer_response.json -w '%{http_code}' "$url")
+    http_code=$(curl -s -o "/tmp/indexer_response_$$.json" -w '%{http_code}' "$url")
 
     if [ "$http_code" = "200" ]; then
-      perms=$(cat /tmp/indexer_response.json)
+      perms=$(cat "/tmp/indexer_response_$$.json")
       break
     fi
     log "Indexer request attempt $attempt/$max_retries returned HTTP $http_code, retrying in 5s..."
@@ -408,7 +408,7 @@ discover_active_root_perm() {
 
   if [ "$http_code" != "200" ] || [ -z "$perms" ]; then
     err "Failed to query indexer (HTTP $http_code) at $url"
-    [ -f /tmp/indexer_response.json ] && err "Response: $(cat /tmp/indexer_response.json)"
+    [ -f "/tmp/indexer_response_$$.json" ] && err "Response: $(cat "/tmp/indexer_response_$$.json")"
     return 1
   fi
 
@@ -448,8 +448,8 @@ issue_and_link() {
   log "Looking up VTJSC for schema $schema_id (ref: $vpr_ref)..."
 
   local jsc_list_code jsc_list
-  jsc_list_code=$(curl -s -o /tmp/jsc_list.json -w '%{http_code}' "${admin_api}/v1/vt/json-schema-credentials")
-  jsc_list=$(cat /tmp/jsc_list.json)
+  jsc_list_code=$(curl -s -o "/tmp/jsc_list_$$.json" -w '%{http_code}' "${admin_api}/v1/vt/json-schema-credentials")
+  jsc_list=$(cat "/tmp/jsc_list_$$.json")
 
   if [ "$jsc_list_code" != "200" ]; then
     err "Failed to list VTJSCs (HTTP $jsc_list_code). Response: $jsc_list"
@@ -466,25 +466,25 @@ issue_and_link() {
   ok "VTJSC URL: $jsc_url"
 
   # Issue the credential
-  echo "$claims_json" > /tmp/claims_ial.json
+  echo "$claims_json" > "/tmp/claims_ial_$$.json"
   local request_body
   request_body=$(jq -n \
     --arg fmt "jsonld" \
     --arg did "$agent_did" \
     --arg jsc "$jsc_url" \
-    --slurpfile claims /tmp/claims_ial.json \
+    --slurpfile claims "/tmp/claims_ial_$$.json" \
     '{format: $fmt, did: $did, jsonSchemaCredentialId: $jsc, claims: $claims[0]}')
 
   local issue_url="${admin_api}/v1/vt/issue-credential"
   log "Issuing credential via $issue_url"
 
-  echo "$request_body" > /tmp/request_ial.json
+  echo "$request_body" > "/tmp/request_ial_$$.json"
   local issue_code credential
-  issue_code=$(curl -s -o /tmp/issue_self.json -w '%{http_code}' \
+  issue_code=$(curl -s -o "/tmp/issue_self_$$.json" -w '%{http_code}' \
     -X POST "$issue_url" \
     -H 'Content-Type: application/json' \
-    -d @/tmp/request_ial.json)
-  credential=$(cat /tmp/issue_self.json)
+    -d @"/tmp/request_ial_$$.json")
+  credential=$(cat "/tmp/issue_self_$$.json")
 
   if [ "$issue_code" != "200" ] && [ "$issue_code" != "201" ]; then
     err "Failed to issue credential (HTTP $issue_code). Response: $credential"
@@ -506,20 +506,20 @@ issue_and_link() {
     -d "{\"credentialSchemaId\": \"$jsc_url\"}" > /dev/null 2>&1 || true
   log "Linking credential on agent: $link_url"
 
-  echo "$signed_cred" > /tmp/cred_ial.json
+  echo "$signed_cred" > "/tmp/cred_ial_$$.json"
   local link_body
   link_body=$(jq -n \
     --arg sbi "$schema_base_id" \
-    --slurpfile cred /tmp/cred_ial.json \
+    --slurpfile cred "/tmp/cred_ial_$$.json" \
     '{schemaBaseId: $sbi, credential: $cred[0]}')
 
-  echo "$link_body" > /tmp/link_ial.json
+  echo "$link_body" > "/tmp/link_ial_$$.json"
   local link_code link_result
-  link_code=$(curl -s -o /tmp/link_self.json -w '%{http_code}' \
+  link_code=$(curl -s -o "/tmp/link_self_$$.json" -w '%{http_code}' \
     -X POST "$link_url" \
     -H 'Content-Type: application/json' \
-    -d @/tmp/link_ial.json)
-  link_result=$(cat /tmp/link_self.json)
+    -d @"/tmp/link_ial_$$.json")
+  link_result=$(cat "/tmp/link_self_$$.json")
 
   if [ "$link_code" != "200" ] && [ "$link_code" != "201" ]; then
     err "Failed to link credential (HTTP $link_code). Response: $link_result"
@@ -538,26 +538,26 @@ issue_remote_and_link() {
   local target_did=$5
   local claims_json=$6
 
-  echo "$claims_json" > /tmp/claims_iral.json
+  echo "$claims_json" > "/tmp/claims_iral_$$.json"
   local request_body
   request_body=$(jq -n \
     --arg fmt "jsonld" \
     --arg did "$target_did" \
     --arg jsc "$jsc_url" \
-    --slurpfile claims /tmp/claims_iral.json \
+    --slurpfile claims "/tmp/claims_iral_$$.json" \
     '{format: $fmt, did: $did, jsonSchemaCredentialId: $jsc, claims: $claims[0]}')
 
   # Issue via remote API
   local issue_url="${remote_api}/v1/vt/issue-credential"
   log "Requesting credential from remote API: $issue_url"
 
-  echo "$request_body" > /tmp/request_iral.json
+  echo "$request_body" > "/tmp/request_iral_$$.json"
   local http_code credential
-  http_code=$(curl -s -o /tmp/issue_response.json -w '%{http_code}' \
+  http_code=$(curl -s -o "/tmp/issue_response_$$.json" -w '%{http_code}' \
     -X POST "$issue_url" \
     -H 'Content-Type: application/json' \
-    -d @/tmp/request_iral.json)
-  credential=$(cat /tmp/issue_response.json)
+    -d @"/tmp/request_iral_$$.json")
+  credential=$(cat "/tmp/issue_response_$$.json")
 
   if [ "$http_code" != "200" ] && [ "$http_code" != "201" ]; then
     err "Remote API returned HTTP $http_code"
@@ -585,20 +585,20 @@ issue_remote_and_link() {
     -d "{\"credentialSchemaId\": \"$jsc_url\"}" > /dev/null 2>&1 || true
   log "Linking credential on local agent: $link_url"
 
-  echo "$signed_cred" > /tmp/cred_iral.json
+  echo "$signed_cred" > "/tmp/cred_iral_$$.json"
   local link_body
   link_body=$(jq -n \
     --arg sbi "$schema_base_id" \
-    --slurpfile cred /tmp/cred_iral.json \
+    --slurpfile cred "/tmp/cred_iral_$$.json" \
     '{schemaBaseId: $sbi, credential: $cred[0]}')
 
-  echo "$link_body" > /tmp/link_iral.json
+  echo "$link_body" > "/tmp/link_iral_$$.json"
   local link_code link_result
-  link_code=$(curl -s -o /tmp/link_response.json -w '%{http_code}' \
+  link_code=$(curl -s -o "/tmp/link_response_$$.json" -w '%{http_code}' \
     -X POST "$link_url" \
     -H 'Content-Type: application/json' \
-    -d @/tmp/link_iral.json)
-  link_result=$(cat /tmp/link_response.json)
+    -d @"/tmp/link_iral_$$.json")
+  link_result=$(cat "/tmp/link_response_$$.json")
 
   if [ "$link_code" != "200" ] && [ "$link_code" != "201" ]; then
     err "Failed to link credential (HTTP $link_code). Response: $link_result"
@@ -693,11 +693,11 @@ find_active_perm() {
   local url="${INDEXER_URL}/verana/perm/v1/list?schema_id=${schema_id}"
 
   local perms http_code
-  http_code=$(curl -s -o /tmp/perm_check.json -w '%{http_code}' "$url")
+  http_code=$(curl -s -o "/tmp/perm_check_$$.json" -w '%{http_code}' "$url")
   if [ "$http_code" != "200" ]; then
     return 1
   fi
-  perms=$(cat /tmp/perm_check.json)
+  perms=$(cat "/tmp/perm_check_$$.json")
 
   local perm_id
   perm_id=$(echo "$perms" | jq -r --arg did "$did" --arg pt "$perm_type" '
@@ -744,13 +744,13 @@ has_trust_registry_for_schema() {
   # Query indexer for trust registries owned by this DID
   local url="${INDEXER_URL}/verana/tr/v1/list?did=${did}"
   local http_code
-  http_code=$(curl -s -o /tmp/tr_list.json -w '%{http_code}' "$url")
+  http_code=$(curl -s -o "/tmp/tr_list_$$.json" -w '%{http_code}' "$url")
   if [ "$http_code" != "200" ]; then
     return 1
   fi
 
   local tr_ids
-  tr_ids=$(jq -r '.trust_registries[]?.id // empty' /tmp/tr_list.json)
+  tr_ids=$(jq -r '.trust_registries[]?.id // empty' "/tmp/tr_list_$$.json")
   if [ -z "$tr_ids" ]; then
     return 1
   fi
@@ -759,14 +759,14 @@ has_trust_registry_for_schema() {
   for tr_id in $tr_ids; do
     local cs_url="${INDEXER_URL}/verana/cs/v1/list?trust_registry_id=${tr_id}"
     local cs_code
-    cs_code=$(curl -s -o /tmp/cs_list.json -w '%{http_code}' "$cs_url")
+    cs_code=$(curl -s -o "/tmp/cs_list_$$.json" -w '%{http_code}' "$cs_url")
     if [ "$cs_code" != "200" ]; then
       continue
     fi
 
     # Iterate over schemas in this trust registry
     local schema_entries
-    schema_entries=$(jq -c '.credential_schemas[]?' /tmp/cs_list.json)
+    schema_entries=$(jq -c '.credential_schemas[]?' "/tmp/cs_list_$$.json")
     while IFS= read -r entry; do
       [ -z "$entry" ] && continue
       local cs_id on_chain_schema on_chain_canon
