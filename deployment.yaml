@@ -13,10 +13,10 @@ chartVersion: v1.11.2
 global:
   domain: eafit.testnet.verana.network
 
-nameOverride: 'example-agent-chart'
+nameOverride: "example-agent-chart"
 
 # Credential definition ID for user authentication (injected from config.env by workflow)
-credentialDefinitionId: ''
+credentialDefinitionId: ""
 
 # === Redis ===
 redis:
@@ -32,11 +32,11 @@ redis:
     size: 1Gi
   resources:
     requests:
-      cpu: '100m'
-      memory: '128Mi'
+      cpu: "100m"
+      memory: "128Mi"
     limits:
-      cpu: '500m'
-      memory: '512Mi'
+      cpu: "500m"
+      memory: "512Mi"
   service:
     type: ClusterIP
 
@@ -48,18 +48,18 @@ postgres:
     pullPolicy: Always
   env:
     - name: PGDATA
-      value: '/var/lib/postgresql/data/pgdata'
+      value: "/var/lib/postgresql/data/pgdata"
   secret:
-    POSTGRES_PASSWORD: 'placeholder'
-    POSTGRES_USER: 'example_agent_db'
-    POSTGRES_DB: 'example-agent'
+    POSTGRES_PASSWORD: "placeholder"
+    POSTGRES_USER: "example_agent_db"
+    POSTGRES_DB: "example-agent"
   resources:
     requests:
-      cpu: '100m'
-      memory: '128Mi'
+      cpu: "100m"
+      memory: "128Mi"
     limits:
-      cpu: '500m'
-      memory: '512Mi'
+      cpu: "500m"
+      memory: "512Mi"
   storage:
     size: 2Gi
     storageClassName: csi-cinder-high-speed
@@ -73,52 +73,52 @@ chatbot:
     pullPolicy: Always
   resources:
     requests:
-      cpu: '200m'
-      memory: '256Mi'
+      cpu: "200m"
+      memory: "256Mi"
     limits:
-      cpu: '1000m'
-      memory: '512Mi'
+      cpu: "1000m"
+      memory: "512Mi"
   env:
     - name: APP_PORT
-      value: '3003'
+      value: "3003"
     - name: LOG_LEVEL
-      value: '3'
+      value: "3"
     - name: LLM_PROVIDER
-      value: 'openai'
+      value: "openai"
     - name: OPENAI_MODEL
-      value: 'gpt-5.4-mini'
+      value: "gpt-5.4-mini"
     - name: VECTOR_STORE
-      value: 'redis'
+      value: "redis"
     - name: VECTOR_INDEX_NAME
-      value: 'example_agent'
+      value: "example_agent"
     - name: RAG_PROVIDER
-      value: 'langchain'
+      value: "langchain"
     - name: RAG_DOCS_PATH
-      value: '/app/rag/docs'
+      value: "/app/rag/docs"
     - name: AGENT_MEMORY_BACKEND
-      value: 'redis'
+      value: "redis"
     - name: AGENT_MEMORY_WINDOW
-      value: '20'
+      value: "20"
     - name: REDIS_URL
-      value: 'redis://example-agent-chart-redis.{{ .Release.Namespace }}:6379'
+      value: "redis://example-agent-chart-redis.{{ .Release.Namespace }}:6379"
     - name: VS_AGENT_ADMIN_URL
-      value: 'http://example-agent.{{ .Release.Namespace }}:3000'
+      value: "http://example-agent.{{ .Release.Namespace }}:3000"
     - name: POSTGRES_HOST
-      value: 'example-agent-chart-postgres.{{ .Release.Namespace }}'
+      value: "example-agent-chart-postgres.{{ .Release.Namespace }}"
     - name: CREDENTIAL_DEFINITION_ID
-      value: '{{ .Values.credentialDefinitionId | default "" }}'
+      value: "{{ .Values.credentialDefinitionId | default \"\" }}"
     - name: GITHUB_MCP_URL
-      value: 'https://api.githubcopilot.com/mcp/'
+      value: "https://api.githubcopilot.com/mcp/"
   agentPack:
     enabled: true
     name: example-agent
     mountPath: /app/agent-packs/example-agent
     fileName: agent-pack.yaml
-    existingConfigMap: 'example-agent-agent-pack'
+    existingConfigMap: "example-agent-agent-pack"
   secret:
-    POSTGRES_PASSWORD: 'placeholder'
-    POSTGRES_USER: 'example_agent_db'
-    POSTGRES_DB_NAME: 'example-agent'
+    POSTGRES_PASSWORD: "placeholder"
+    POSTGRES_USER: "example_agent_db"
+    POSTGRES_DB_NAME: "example-agent"
   service:
     type: ClusterIP
     port: 3003
@@ -139,13 +139,13 @@ artemis:
 # === VS Agent ===
 vs-agent-chart:
   enabled: true
-  name: example-agent
-  didcommLabel: 'Example Agent'
-  didcommInvitationImageUrl: 'https://hologram.zone/images/github.svg'
-  eventsBaseUrl: http://example-agent-chart-chatbot:3003
+  name: barber-agent
+  didcommLabel: "Barber Agent"
+  didcommInvitationImageUrl: "https://hologram.zone/images/github.svg"
+  eventsBaseUrl: http://barber-agent-chart-chatbot:3003
   ingress:
-    host: "example-agent.{{ .Values.global.domain }}"
-    tlsSecret: "example-agent.{{ .Values.global.domain }}-cert"
+    host: "barber-agent.{{ .Values.global.domain }}"
+    tlsSecret: "barber-agent.{{ .Values.global.domain }}-cert"
     public:
       enableCors: true
     private:

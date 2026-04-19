@@ -51,7 +51,7 @@ services:
       - AGENT_PACK_PATH=/app/agent-packs/example-agent
       - LOG_LEVEL=3
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-5.4-mini}
+      - OPENAI_MODEL=${LLM_MODEL:-gpt-5.4-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - VECTOR_STORE=redis
       - VECTOR_INDEX_NAME=example_agent
@@ -70,7 +70,8 @@ services:
       - MCP_CONFIG_ENCRYPTION_KEY=${MCP_CONFIG_ENCRYPTION_KEY:-}
     volumes:
       - chatbot-data:/app/data
-      - ../agent-pack.yaml:/app/agent-packs/example-agent/agent-pack.yaml:ro
+      - ../app/agent-packs/example-agent:/app/agent-packs/example-agent:ro
+      - ../app/rag/docs:/app/rag/docs:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
