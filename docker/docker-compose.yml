@@ -41,6 +41,17 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: chatbot-ollama
+    restart: always
+    ports:
+      - '11435:11434'
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    entrypoint: /bin/sh
+    command: -c "ollama serve & sleep 3 && ollama pull llama3 && wait"
+
   chatbot:
     image: ${CHATBOT_IMAGE:-io2060/hologram-generic-ai-agent-app:v1.11.2}
     platform: linux/amd64
@@ -53,6 +64,7 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_MODEL=${LLM_MODEL:-gpt-5.4-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_BASE_URL=${LLM_BASE_URL:-http://ollama:11434}
       - VECTOR_STORE=redis
       - VECTOR_INDEX_NAME=example_agent
       - RAG_PROVIDER=langchain
