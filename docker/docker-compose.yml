@@ -83,7 +83,7 @@ services:
     volumes:
       - chatbot-data:/app/data
       - ../app/agent-packs/example-agent:/app/agent-packs/example-agent:ro
-      - ../app/rag/docs:/app/rag/docs:ro
+      - ../app/rag/docs:/app/rag/docs
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
