@@ -85,8 +85,8 @@ languages:
 
 llm:
   provider: ${LLM_PROVIDER:-openai}
-  model: ${LLM_MODEL:-gpt-4o-mini}
-  baseUrl: ${LLM_BASE_URL:-https://api.openai.com/v1}
+  model: ${OPENAI_MODEL:-gpt-4o-mini}
+  baseUrl: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
   temperature: 0.2
   agentPrompt: >-
     "You are a GitHub assistant agent.\n\
@@ -106,8 +106,8 @@ llm:
 rag:
   provider: langchain
   docsPath: /app/rag/docs
-  remoteUrls:
-    - https://raw.githubusercontent.com/verana-labs/eafit-challenge-agent-example/main/docs/README.md
+  # remoteUrls:
+  #   - https://raw.githubusercontent.com/verana-labs/eafit-challenge-agent-example/main/docs/README.md
   vectorStore:
     type: redis
     indexName: example_agent
