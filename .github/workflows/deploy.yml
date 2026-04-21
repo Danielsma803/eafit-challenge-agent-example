@@ -144,14 +144,19 @@ jobs:
       # -----------------------------------------------------------------------
       # GET-CREDENTIALS: Obtain Service credential from eafit-challenge organization
       # -----------------------------------------------------------------------
+      - name: Wait for VS Agent to be ready
+        if: inputs.step == 'get-credentials' || inputs.step == 'all'
+        run: |
+          kubectl rollout status deployment/example-agent -n "$CHART_NAMESPACE" --timeout=180s
+
       - name: Port-forward Example Agent VS Agent
         if: inputs.step == 'get-credentials' || inputs.step == 'all'
         run: |
           kubectl port-forward -n "$CHART_NAMESPACE" "svc/example-agent" 3002:3000 &
           echo "CHILD_PF_PID=$!" >> "$GITHUB_ENV"
-          sleep 5
+          sleep 15
           curl -sf http://localhost:3002/v1/agent > /dev/null || {
-            echo "::error::Port-forward to Example Agent VS-Agent failed"
+            echo "::error::Port-forward to Example Agent VS-Agent failed. The pod might still be starting."
             exit 1
           }
           echo "Port-forward to Example Agent VS-Agent on :3002"
