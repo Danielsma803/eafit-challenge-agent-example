@@ -13,7 +13,7 @@ chartVersion: v1.11.2
 global:
   domain: team-c.teams.eafit.testnet.verana.network
 
-nameOverride: "example-agent-chart"
+nameOverride: "danielsampayo-agent"
 
 # Credential definition ID for user authentication (injected from config.env by workflow)
 credentialDefinitionId: ""
@@ -100,11 +100,11 @@ chatbot:
     - name: AGENT_MEMORY_WINDOW
       value: "20"
     - name: REDIS_URL
-      value: "redis://example-agent-chart-redis.{{ .Release.Namespace }}:6379"
+      value: "redis://danielsampayo-agent-redis.{{ .Release.Namespace }}:6379"
     - name: VS_AGENT_ADMIN_URL
-      value: "http://example-agent-chart-example-agent.{{ .Release.Namespace }}:3000"
+      value: "http://danielsampayo-agent-example-agent.{{ .Release.Namespace }}:3000"
     - name: POSTGRES_HOST
-      value: "example-agent-chart-postgres.{{ .Release.Namespace }}"
+      value: "danielsampayo-agent-postgres.{{ .Release.Namespace }}"
     - name: CREDENTIAL_DEFINITION_ID
       value: "{{ .Values.credentialDefinitionId | default \"\" }}"
     - name: GITHUB_MCP_URL

@@ -132,7 +132,7 @@ jobs:
           export RELEASE_NAME CHART_NAMESPACE WALLET_KEY MCP_KEY
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
           export POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}"
-          
+
           yq -i '
             .credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID) |
             (.chatbot.env[] | select(.name == "REDIS_URL")).value = "redis://" + env(RELEASE_NAME) + "-redis." + env(CHART_NAMESPACE) + ":6379" |
@@ -142,10 +142,10 @@ jobs:
             .chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY = env(MCP_KEY) |
             .chatbot.secret.POSTGRES_PASSWORD = env(POSTGRES_PASSWORD) |
             .postgres.secret.POSTGRES_PASSWORD = env(POSTGRES_PASSWORD) |
-            (.vs-agent-chart.extraEnv[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres" |
-            (.vs-agent-chart.extraEnv[] | select(.name == "REDIS_HOST")).value = env(RELEASE_NAME) + "-redis" |
-            (.vs-agent-chart.extraEnv[] | select(.name == "POSTGRES_PASSWORD")).value = env(POSTGRES_PASSWORD) |
-            (.vs-agent-chart.extraEnv[] | select(.name == "AGENT_WALLET_KEY")).value = env(WALLET_KEY)
+            (."vs-agent-chart".extraEnv[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres" |
+            (."vs-agent-chart".extraEnv[] | select(.name == "REDIS_HOST")).value = env(RELEASE_NAME) + "-redis" |
+            (."vs-agent-chart".extraEnv[] | select(.name == "POSTGRES_PASSWORD")).value = env(POSTGRES_PASSWORD) |
+            (."vs-agent-chart".extraEnv[] | select(.name == "AGENT_WALLET_KEY")).value = env(WALLET_KEY)
           ' /tmp/helm-values.yaml
 
           helm upgrade --install "$RELEASE_NAME" "$CHART_SOURCE" \
@@ -198,10 +198,14 @@ jobs:
           done
           echo "::error::VS Agent API failed to respond after 5 minutes. Debugging info follows:"
           kubectl get pods -n "$CHART_NAMESPACE"
-          # Find the pod that is NOT Running
-          CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep -E "(${RELEASE_NAME}|chatbot|agent)" | head -n 1 | awk '{print $1}')
+          # Find the pod that is NOT Running, prioritizing current release
+          CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep "${RELEASE_NAME}" | head -n 1 | awk '{print $1}')
           if [ -z "$CRASHING_POD" ]; then
-             # Fallback: find any pod related to the release
+             # Fallback 1: any non-running pod related to agent/chatbot
+             CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep -E "(chatbot|agent)" | head -n 1 | awk '{print $1}')
+          fi
+          if [ -z "$CRASHING_POD" ]; then
+             # Fallback 2: any pod related to the release
              CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers -o custom-columns=":metadata.name" | grep -E "${RELEASE_NAME}" | head -n 1)
           fi
 
