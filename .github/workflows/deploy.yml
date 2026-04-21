@@ -62,10 +62,12 @@ jobs:
             exit 1
           fi
           mkdir -p ~/.kube
-          echo "${{ secrets.OVH_KUBECONFIG }}" > ~/.kube/config
+          cat <<'KUBEEOF' > ~/.kube/config
+          ${{ secrets.OVH_KUBECONFIG }}
+          KUBEEOF
           chmod 600 ~/.kube/config
-          # Verify connection
-          kubectl cluster-info || { echo "::error::Could not connect to Kubernetes cluster. Check your OVH_KUBECONFIG secret."; exit 1; }
+          # Verify connection to your namespace
+          kubectl get pods -n "${{ secrets.K8S_NAMESPACE }}" || { echo "::error::Could not connect to cluster or namespace is not accessible."; exit 1; }
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4
