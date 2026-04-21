@@ -199,9 +199,11 @@ jobs:
           echo "::error::VS Agent API failed to respond after 5 minutes. Debugging info follows:"
           kubectl get pods -n "$CHART_NAMESPACE"
           # Find the pod that is NOT Running, prioritizing current release
-          CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep "${RELEASE_NAME}" | head -n 1 | awk '{print $1}')
+          # (We strip '-chart' or '-agent' from RELEASE_NAME to find pods more easily)
+          STRIPPED_NAME=$(echo "${RELEASE_NAME}" | sed -E 's/-(chart|agent)//g')
+          CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep -E "(${RELEASE_NAME}|${STRIPPED_NAME})" | head -n 1 | awk '{print $1}')
           if [ -z "$CRASHING_POD" ]; then
-             # Fallback 1: any non-running pod related to agent/chatbot
+             # Fallback 1: any non-running pod related to chatbot/agent
              CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep -E "(chatbot|agent)" | head -n 1 | awk '{print $1}')
           fi
           if [ -z "$CRASHING_POD" ]; then

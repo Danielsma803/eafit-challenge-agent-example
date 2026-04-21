@@ -13,7 +13,7 @@ chartVersion: v1.11.2
 global:
   domain: team-c.teams.eafit.testnet.verana.network
 
-nameOverride: "danielsampayo-agent"
+nameOverride: "danielsampayo"
 
 # Credential definition ID for user authentication (injected from config.env by workflow)
 credentialDefinitionId: ""
@@ -100,11 +100,11 @@ chatbot:
     - name: AGENT_MEMORY_WINDOW
       value: "20"
     - name: REDIS_URL
-      value: "redis://danielsampayo-agent-redis.{{ .Release.Namespace }}:6379"
+      value: "redis://danielsampayo-redis.{{ .Release.Namespace }}:6379"
     - name: VS_AGENT_ADMIN_URL
-      value: "http://danielsampayo-agent-example-agent.{{ .Release.Namespace }}:3000"
+      value: "http://danielsampayo-agent.{{ .Release.Namespace }}:3000"
     - name: POSTGRES_HOST
-      value: "danielsampayo-agent-postgres.{{ .Release.Namespace }}"
+      value: "danielsampayo-postgres.{{ .Release.Namespace }}"
     - name: CREDENTIAL_DEFINITION_ID
       value: "{{ .Values.credentialDefinitionId | default \"\" }}"
     - name: GITHUB_MCP_URL
@@ -139,12 +139,12 @@ artemis:
 # === VS Agent ===
 vs-agent-chart:
   enabled: true
-  name: example-agent
+  name: agent
   didcommLabel: "Example Agent"
   didcommInvitationImageUrl: "https://hologram.zone/images/github.svg"
-  eventsBaseUrl: http://example-agent-chart-chatbot:3003
+  eventsBaseUrl: http://danielsampayo-chatbot:3003
   ingress:
-    host: "example-agent.{{ .Values.global.domain }}"
+    host: "danielsampayo-agent.{{ .Values.global.domain }}"
     tlsSecret: "example-agent.{{ .Values.global.domain }}-cert"
     public:
       enableCors: true
