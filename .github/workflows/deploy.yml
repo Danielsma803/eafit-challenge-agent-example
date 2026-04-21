@@ -17,6 +17,7 @@ jobs:
   deploy-example-agent:
     name: Deploy Example Agent VS
     runs-on: ubuntu-latest
+    environment: TEST
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -52,18 +53,16 @@ jobs:
 
       - name: Set up kubeconfig
         run: |
-          if [[ -z "${{ secrets.OVH_KUBECONFIG }}" ]]; then
-            echo "::error::OVH_KUBECONFIG secret is empty or not found in GitHub Secrets."
+          if [ -z "${{ secrets.OVH_KUBECONFIG }}" ]; then
+            echo "::error::OVH_KUBECONFIG secret is not set. Please add it to your GitHub Secrets."
             exit 1
           fi
-          if [[ -z "${{ secrets.K8S_NAMESPACE }}" ]]; then
-            echo "::error::K8S_NAMESPACE secret is empty or not found in GitHub Secrets."
+          if [ -z "${{ secrets.K8S_NAMESPACE }}" ]; then
+            echo "::error::K8S_NAMESPACE secret is not set. Please add it to your GitHub Secrets."
             exit 1
           fi
           mkdir -p ~/.kube
-          cat <<'KUBEEOF' > ~/.kube/config
-          ${{ secrets.OVH_KUBECONFIG }}
-          KUBEEOF
+          echo "${{ secrets.OVH_KUBECONFIG }}" > ~/.kube/config
           chmod 600 ~/.kube/config
           # Verify connection
           kubectl cluster-info || { echo "::error::Could not connect to Kubernetes cluster. Check your OVH_KUBECONFIG secret."; exit 1; }
