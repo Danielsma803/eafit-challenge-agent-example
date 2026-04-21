@@ -144,22 +144,31 @@ jobs:
       # -----------------------------------------------------------------------
       # GET-CREDENTIALS: Obtain Service credential from eafit-challenge organization
       # -----------------------------------------------------------------------
-      - name: Wait for VS Agent to be ready
+      - name: Wait for VS Agent pods to be ready
         if: inputs.step == 'get-credentials' || inputs.step == 'all'
         run: |
-          kubectl rollout status deployment/example-agent -n "$CHART_NAMESPACE" --timeout=180s
+          # Wait for any pod with the vs-agent label to be ready
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vs-agent -n "$CHART_NAMESPACE" --timeout=180s
 
       - name: Port-forward Example Agent VS Agent
         if: inputs.step == 'get-credentials' || inputs.step == 'all'
         run: |
-          kubectl port-forward -n "$CHART_NAMESPACE" "svc/example-agent" 3002:3000 &
+          # Start port-forward in background
+          kubectl port-forward -n "$CHART_NAMESPACE" svc/example-agent 3002:3000 &
           echo "CHILD_PF_PID=$!" >> "$GITHUB_ENV"
-          sleep 15
-          curl -sf http://localhost:3002/v1/agent > /dev/null || {
-            echo "::error::Port-forward to Example Agent VS-Agent failed. The pod might still be starting."
-            exit 1
-          }
-          echo "Port-forward to Example Agent VS-Agent on :3002"
+
+          # Retry loop to wait for the port-forward to be active and the app to respond
+          echo "Waiting for VS Agent API on localhost:3002..."
+          for i in {1..15}; do
+            if curl -sf http://localhost:3002/v1/agent > /dev/null; then
+              echo "VS Agent is ready and responding!"
+              exit 0
+            fi
+            echo "Attempt $i/15: VS Agent not ready yet, sleeping 10s..."
+            sleep 10
+          done
+          echo "::error::VS Agent API failed to respond after 150 seconds."
+          exit 1
 
       - name: Port-forward organization Agent
         if: inputs.step == 'get-credentials' || inputs.step == 'all'
