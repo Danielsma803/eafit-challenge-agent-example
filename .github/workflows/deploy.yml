@@ -116,18 +116,30 @@ jobs:
           export CREDENTIAL_DEFINITION_ID
           yq -i '.credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID)' /tmp/helm-values.yaml
 
+          # Validate and/or generate keys
+          MCP_KEY="${{ secrets.EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY }}"
+          if [ ${#MCP_KEY} -ne 64 ]; then
+            MCP_KEY=$(openssl rand -hex 32)
+            echo "::warning::EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY invalid or missing — using generated key"
+          fi
+          WALLET_KEY="${{ secrets.EXAMPLE_AGENT_WALLET_KEY }}"
+          if [ -z "$WALLET_KEY" ]; then
+            WALLET_KEY=$(openssl rand -base64 32)
+            echo "::warning::EXAMPLE_AGENT_WALLET_KEY missing — using generated key"
+          fi
+
           helm upgrade --install "$RELEASE_NAME" "$CHART_SOURCE" \
             --version "$CHART_VERSION" \
             --namespace "$CHART_NAMESPACE" \
             --values /tmp/helm-values.yaml \
             --set chatbot.secret.OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}" \
-            --set chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY="${{ secrets.EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY }}" \
+            --set chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY="$MCP_KEY" \
             --set chatbot.secret.POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}" \
             --set postgres.secret.POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}" \
             --set vs-agent-chart.extraEnv[0].name=AGENT_WALLET_ID \
             --set vs-agent-chart.extraEnv[0].value="Example Agent" \
             --set vs-agent-chart.extraEnv[1].name=AGENT_WALLET_KEY \
-            --set vs-agent-chart.extraEnv[1].value="${{ secrets.EXAMPLE_AGENT_WALLET_KEY }}" \
+            --set vs-agent-chart.extraEnv[1].value="$WALLET_KEY" \
             --set vs-agent-chart.extraEnv[2].name=POSTGRES_HOST \
             --set vs-agent-chart.extraEnv[2].value="${RELEASE_NAME}-postgres" \
             --set vs-agent-chart.extraEnv[3].name=POSTGRES_PASSWORD \
@@ -136,6 +148,8 @@ jobs:
             --set vs-agent-chart.extraEnv[4].value="example_agent_db" \
             --set vs-agent-chart.extraEnv[5].name=REDIS_HOST \
             --set vs-agent-chart.extraEnv[5].value="${RELEASE_NAME}-redis" \
+            --set vs-agent-chart.extraEnv[6].name=POSTGRES_DB \
+            --set vs-agent-chart.extraEnv[6].value="example-agent" \
             --set chatbot.env[0].name=LLM_PROVIDER \
             --set chatbot.env[0].value="${LLM_PROVIDER}" \
             --set chatbot.env[1].name=OPENAI_MODEL \
@@ -176,8 +190,15 @@ jobs:
           done
           echo "::error::VS Agent API failed to respond after 5 minutes. Debugging info follows:"
           kubectl get pods -n "$CHART_NAMESPACE"
-          # Get logs for all pods in the release to see where it failed
-          kubectl logs -n "$CHART_NAMESPACE" -l app.kubernetes.io/instance="${RELEASE_NAME}" --all-containers --tail=50 || echo "Could not fetch logs."
+          # Find the pod that is crashing (usually named *-0 or example-agent-*)
+          CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers -o custom-columns=":metadata.name" | grep -E "(-0$|example-agent)" | head -n 1)
+          if [ -n "$CRASHING_POD" ]; then
+            echo "Logs for crashing pod $CRASHING_POD:"
+            kubectl logs "$CRASHING_POD" -n "$CHART_NAMESPACE" --all-containers --tail=100
+          else
+            echo "Could not identify crashing pod. General logs:"
+            kubectl logs -n "$CHART_NAMESPACE" -l app.kubernetes.io/instance="${RELEASE_NAME}" --all-containers --tail=50
+          fi
           exit 1
 
       - name: Port-forward organization Agent
