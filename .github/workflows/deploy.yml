@@ -133,8 +133,7 @@ jobs:
             --set chatbot.env[1].name=OPENAI_MODEL \
             --set chatbot.env[1].value="${OPENAI_MODEL}" \
             --set chatbot.env[2].name=OPENAI_BASE_URL \
-            --set chatbot.env[2].value="${OPENAI_BASE_URL}" \
-            --wait --timeout 600s
+            --set chatbot.env[2].value="${OPENAI_BASE_URL}"
 
       - name: Restart chatbot to pick up ConfigMap changes
         if: inputs.step == 'deploy' || inputs.step == 'all'
