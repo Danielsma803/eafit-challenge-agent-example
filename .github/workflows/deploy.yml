@@ -173,7 +173,7 @@ jobs:
         run: |
           # Retry loop to wait for the service to exist, start port-forward, and get a response
           echo "Waiting for VS Agent to be ready..."
-          for i in {1..10}; do
+          for i in {1..30}; do
             # 1. Try to start port-forward if not already running
             if ! pgrep -f "port-forward.*3002:3000" > /dev/null; then
               # Try several possible service names
