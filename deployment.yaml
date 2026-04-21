@@ -145,7 +145,7 @@ vs-agent-chart:
   eventsBaseUrl: http://danielsampayo-chatbot:3003
   ingress:
     host: "danielsampayo-agent.{{ .Values.global.domain }}"
-    tlsSecret: "example-agent.{{ .Values.global.domain }}-cert"
+    tlsSecret: "danielsampayo-agent.{{ .Values.global.domain }}-cert"
     public:
       enableCors: true
     private:
@@ -153,13 +153,17 @@ vs-agent-chart:
       host: ""
   extraEnv:
     - name: REDIS_HOST
-      value: "example-agent-chart-redis"
+      value: "danielsampayo-redis"
     - name: POSTGRES_HOST
-      value: "example-agent-chart-postgres"
+      value: "danielsampayo-postgres"
     - name: POSTGRES_USER
       value: "example_agent_db"
     - name: POSTGRES_DB
       value: "example-agent"
+    - name: AGENT_ADMIN_PORT
+      value: "3000"
+    - name: AGENT_PUBLIC_PORT
+      value: "3001"
     - name: POSTGRES_PASSWORD
       value: "placeholder"
     - name: AGENT_WALLET_ID
