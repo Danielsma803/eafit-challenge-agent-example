@@ -144,30 +144,29 @@ jobs:
       # -----------------------------------------------------------------------
       # GET-CREDENTIALS: Obtain Service credential from eafit-challenge organization
       # -----------------------------------------------------------------------
-      - name: Wait for VS Agent pods to be ready
+      - name: Port-forward and Wait for VS Agent
         if: inputs.step == 'get-credentials' || inputs.step == 'all'
         run: |
-          # Wait for any pod with the vs-agent label to be ready
-          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=vs-agent -n "$CHART_NAMESPACE" --timeout=180s
-
-      - name: Port-forward Example Agent VS Agent
-        if: inputs.step == 'get-credentials' || inputs.step == 'all'
-        run: |
-          # Start port-forward in background
-          kubectl port-forward -n "$CHART_NAMESPACE" svc/example-agent 3002:3000 &
-          echo "CHILD_PF_PID=$!" >> "$GITHUB_ENV"
-
-          # Retry loop to wait for the port-forward to be active and the app to respond
-          echo "Waiting for VS Agent API on localhost:3002..."
-          for i in {1..15}; do
+          # Retry loop to wait for the service to exist, start port-forward, and get a response
+          echo "Waiting for VS Agent to be ready..."
+          for i in {1..30}; do
+            # 1. Try to start port-forward if not already running
+            if ! pgrep -f "port-forward.*svc/example-agent" > /dev/null; then
+              kubectl port-forward -n "$CHART_NAMESPACE" svc/example-agent 3002:3000 > /dev/null 2>&1 &
+              echo "Started port-forward attempt..."
+            fi
+            
+            # 2. Check if the app responds
             if curl -sf http://localhost:3002/v1/agent > /dev/null; then
               echo "VS Agent is ready and responding!"
+              echo "CHILD_PF_PID=$(pgrep -f 'port-forward.*svc/example-agent')" >> "$GITHUB_ENV"
               exit 0
             fi
-            echo "Attempt $i/15: VS Agent not ready yet, sleeping 10s..."
+            
+            echo "Attempt $i/30: VS Agent not ready, sleeping 10s..."
             sleep 10
           done
-          echo "::error::VS Agent API failed to respond after 150 seconds."
+          echo "::error::VS Agent API failed to respond after 5 minutes."
           exit 1
 
       - name: Port-forward organization Agent
