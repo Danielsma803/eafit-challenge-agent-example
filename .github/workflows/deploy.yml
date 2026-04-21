@@ -155,7 +155,7 @@ jobs:
               kubectl port-forward -n "$CHART_NAMESPACE" svc/example-agent 3002:3000 > /dev/null 2>&1 &
               echo "Started port-forward attempt..."
             fi
-            
+
             # 2. Check if the app responds
             if curl -sf http://localhost:3002/v1/agent > /dev/null; then
               echo "VS Agent is ready and responding!"
@@ -166,7 +166,9 @@ jobs:
             echo "Attempt $i/30: VS Agent not ready, sleeping 10s..."
             sleep 10
           done
-          echo "::error::VS Agent API failed to respond after 5 minutes."
+          echo "::error::VS Agent API failed to respond after 5 minutes. Debugging info follows:"
+          kubectl get pods -n "$CHART_NAMESPACE"
+          kubectl logs -l app.kubernetes.io/name=vs-agent -n "$CHART_NAMESPACE" --tail=100 || echo "Could not fetch logs."
           exit 1
 
       - name: Port-forward organization Agent
