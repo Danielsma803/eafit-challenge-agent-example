@@ -128,7 +128,13 @@ jobs:
             --set vs-agent-chart.extraEnv[0].value="Example Agent" \
             --set vs-agent-chart.extraEnv[1].name=AGENT_WALLET_KEY \
             --set vs-agent-chart.extraEnv[1].value="${{ secrets.EXAMPLE_AGENT_WALLET_KEY }}" \
-            --wait --timeout 300s
+            --set chatbot.env[0].name=LLM_PROVIDER \
+            --set chatbot.env[0].value="${LLM_PROVIDER}" \
+            --set chatbot.env[1].name=OPENAI_MODEL \
+            --set chatbot.env[1].value="${OPENAI_MODEL}" \
+            --set chatbot.env[2].name=OPENAI_BASE_URL \
+            --set chatbot.env[2].value="${OPENAI_BASE_URL}" \
+            --wait --timeout 600s
 
       - name: Restart chatbot to pick up ConfigMap changes
         if: inputs.step == 'deploy' || inputs.step == 'all'
