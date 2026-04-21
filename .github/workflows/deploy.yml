@@ -128,6 +128,14 @@ jobs:
             --set vs-agent-chart.extraEnv[0].value="Example Agent" \
             --set vs-agent-chart.extraEnv[1].name=AGENT_WALLET_KEY \
             --set vs-agent-chart.extraEnv[1].value="${{ secrets.EXAMPLE_AGENT_WALLET_KEY }}" \
+            --set vs-agent-chart.extraEnv[2].name=POSTGRES_HOST \
+            --set vs-agent-chart.extraEnv[2].value="${RELEASE_NAME}-postgres" \
+            --set vs-agent-chart.extraEnv[3].name=POSTGRES_PASSWORD \
+            --set vs-agent-chart.extraEnv[3].value="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}" \
+            --set vs-agent-chart.extraEnv[4].name=POSTGRES_USER \
+            --set vs-agent-chart.extraEnv[4].value="example_agent_db" \
+            --set vs-agent-chart.extraEnv[5].name=REDIS_HOST \
+            --set vs-agent-chart.extraEnv[5].value="${RELEASE_NAME}-redis" \
             --set chatbot.env[0].name=LLM_PROVIDER \
             --set chatbot.env[0].value="${LLM_PROVIDER}" \
             --set chatbot.env[1].name=OPENAI_MODEL \
@@ -138,8 +146,8 @@ jobs:
       - name: Restart chatbot to pick up ConfigMap changes
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
-          kubectl rollout restart statefulset/example-agent-chart-chatbot -n "$CHART_NAMESPACE"
-          kubectl rollout status statefulset/example-agent-chart-chatbot -n "$CHART_NAMESPACE" --timeout=120s
+          kubectl rollout restart statefulset/${RELEASE_NAME}-chatbot -n "$CHART_NAMESPACE"
+          kubectl rollout status statefulset/${RELEASE_NAME}-chatbot -n "$CHART_NAMESPACE" --timeout=120s
 
       # -----------------------------------------------------------------------
       # GET-CREDENTIALS: Obtain Service credential from eafit-challenge organization
@@ -168,7 +176,8 @@ jobs:
           done
           echo "::error::VS Agent API failed to respond after 5 minutes. Debugging info follows:"
           kubectl get pods -n "$CHART_NAMESPACE"
-          kubectl logs -l app.kubernetes.io/name=vs-agent -n "$CHART_NAMESPACE" --tail=100 || echo "Could not fetch logs."
+          # Get logs for all pods in the release to see where it failed
+          kubectl logs -n "$CHART_NAMESPACE" -l app.kubernetes.io/instance="${RELEASE_NAME}" --all-containers --tail=50 || echo "Could not fetch logs."
           exit 1
 
       - name: Port-forward organization Agent
