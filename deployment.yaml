@@ -152,12 +152,20 @@ vs-agent-chart:
       whitelistSourceRange: ""
       host: ""
   extraEnv:
-    - name: AGENT_WALLET_ID
-      value: "Example Agent"
-    - name: USE_CORS
-      value: "true"
     - name: REDIS_HOST
       value: "example-agent-chart-redis"
+    - name: POSTGRES_HOST
+      value: "example-agent-chart-postgres"
+    - name: POSTGRES_USER
+      value: "example_agent_db"
+    - name: POSTGRES_DB
+      value: "example-agent"
+    - name: POSTGRES_PASSWORD
+      value: "placeholder"
+    - name: AGENT_WALLET_ID
+      value: "Example Agent"
+    - name: AGENT_WALLET_KEY
+      value: "placeholder"
     - name: AGENT_LOG_LEVEL
       value: "3"
     - name: SELF_ISSUED_VTC_ORG_TYPE

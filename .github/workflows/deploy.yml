@@ -128,28 +128,30 @@ jobs:
             echo "::warning::EXAMPLE_AGENT_WALLET_KEY missing — using generated key"
           fi
 
+          # Inject dynamic values and secrets using yq
+          export RELEASE_NAME CHART_NAMESPACE WALLET_KEY MCP_KEY
+          export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
+          export POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}"
+          
+          yq -i '
+            .credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID) |
+            (.chatbot.env[] | select(.name == "REDIS_URL")).value = "redis://" + env(RELEASE_NAME) + "-redis." + env(CHART_NAMESPACE) + ":6379" |
+            (.chatbot.env[] | select(.name == "VS_AGENT_ADMIN_URL")).value = "http://" + env(RELEASE_NAME) + "-example-agent." + env(CHART_NAMESPACE) + ":3000" |
+            (.chatbot.env[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres." + env(CHART_NAMESPACE) |
+            .chatbot.secret.OPENAI_API_KEY = env(OPENAI_API_KEY) |
+            .chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY = env(MCP_KEY) |
+            .chatbot.secret.POSTGRES_PASSWORD = env(POSTGRES_PASSWORD) |
+            .postgres.secret.POSTGRES_PASSWORD = env(POSTGRES_PASSWORD) |
+            (.vs-agent-chart.extraEnv[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres" |
+            (.vs-agent-chart.extraEnv[] | select(.name == "REDIS_HOST")).value = env(RELEASE_NAME) + "-redis" |
+            (.vs-agent-chart.extraEnv[] | select(.name == "POSTGRES_PASSWORD")).value = env(POSTGRES_PASSWORD) |
+            (.vs-agent-chart.extraEnv[] | select(.name == "AGENT_WALLET_KEY")).value = env(WALLET_KEY)
+          ' /tmp/helm-values.yaml
+
           helm upgrade --install "$RELEASE_NAME" "$CHART_SOURCE" \
             --version "$CHART_VERSION" \
             --namespace "$CHART_NAMESPACE" \
             --values /tmp/helm-values.yaml \
-            --set chatbot.secret.OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}" \
-            --set chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY="$MCP_KEY" \
-            --set chatbot.secret.POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}" \
-            --set postgres.secret.POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}" \
-            --set vs-agent-chart.extraEnv[0].name=AGENT_WALLET_ID \
-            --set vs-agent-chart.extraEnv[0].value="Example Agent" \
-            --set vs-agent-chart.extraEnv[1].name=AGENT_WALLET_KEY \
-            --set vs-agent-chart.extraEnv[1].value="$WALLET_KEY" \
-            --set vs-agent-chart.extraEnv[2].name=POSTGRES_HOST \
-            --set vs-agent-chart.extraEnv[2].value="${RELEASE_NAME}-postgres" \
-            --set vs-agent-chart.extraEnv[3].name=POSTGRES_PASSWORD \
-            --set vs-agent-chart.extraEnv[3].value="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}" \
-            --set vs-agent-chart.extraEnv[4].name=POSTGRES_USER \
-            --set vs-agent-chart.extraEnv[4].value="example_agent_db" \
-            --set vs-agent-chart.extraEnv[5].name=REDIS_HOST \
-            --set vs-agent-chart.extraEnv[5].value="${RELEASE_NAME}-redis" \
-            --set vs-agent-chart.extraEnv[6].name=POSTGRES_DB \
-            --set vs-agent-chart.extraEnv[6].value="example-agent" \
             --set chatbot.env[0].name=LLM_PROVIDER \
             --set chatbot.env[0].value="${LLM_PROVIDER}" \
             --set chatbot.env[1].name=OPENAI_MODEL \
