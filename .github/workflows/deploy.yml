@@ -171,11 +171,17 @@ jobs:
         run: |
           # Retry loop to wait for the service to exist, start port-forward, and get a response
           echo "Waiting for VS Agent to be ready..."
-          for i in {1..30}; do
+          for i in {1..10}; do
             # 1. Try to start port-forward if not already running
-            if ! pgrep -f "port-forward.*svc/example-agent" > /dev/null; then
-              kubectl port-forward -n "$CHART_NAMESPACE" svc/example-agent 3002:3000 > /dev/null 2>&1 &
-              echo "Started port-forward attempt..."
+            if ! pgrep -f "port-forward.*3002:3000" > /dev/null; then
+              # Try several possible service names
+              SVC_NAME="${RELEASE_NAME}-example-agent"
+              kubectl get svc "$SVC_NAME" -n "$CHART_NAMESPACE" > /dev/null 2>&1 || SVC_NAME="${RELEASE_NAME}"
+              kubectl get svc "$SVC_NAME" -n "$CHART_NAMESPACE" > /dev/null 2>&1 || SVC_NAME="example-agent"
+              
+              echo "Attempting port-forward to svc/$SVC_NAME..."
+              kubectl port-forward -n "$CHART_NAMESPACE" "svc/$SVC_NAME" 3002:3000 > /dev/null 2>&1 &
+              echo "Started port-forward attempt to $SVC_NAME..."
             fi
 
             # 2. Check if the app responds
@@ -190,13 +196,18 @@ jobs:
           done
           echo "::error::VS Agent API failed to respond after 5 minutes. Debugging info follows:"
           kubectl get pods -n "$CHART_NAMESPACE"
-          # Find the pod that is crashing (usually named *-0 or example-agent-*)
-          CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers -o custom-columns=":metadata.name" | grep -E "(-0$|example-agent)" | head -n 1)
+          # Find the pod that is NOT Running
+          CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep -E "(${RELEASE_NAME}|chatbot|agent)" | head -n 1 | awk '{print $1}')
+          if [ -z "$CRASHING_POD" ]; then
+             # Fallback: find any pod related to the release
+             CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers -o custom-columns=":metadata.name" | grep -E "${RELEASE_NAME}" | head -n 1)
+          fi
+
           if [ -n "$CRASHING_POD" ]; then
-            echo "Logs for crashing pod $CRASHING_POD:"
+            echo "Logs for pod $CRASHING_POD:"
             kubectl logs "$CRASHING_POD" -n "$CHART_NAMESPACE" --all-containers --tail=100
           else
-            echo "Could not identify crashing pod. General logs:"
+            echo "Could not identify relevant pod. General logs for instance ${RELEASE_NAME}:"
             kubectl logs -n "$CHART_NAMESPACE" -l app.kubernetes.io/instance="${RELEASE_NAME}" --all-containers --tail=50
           fi
           exit 1

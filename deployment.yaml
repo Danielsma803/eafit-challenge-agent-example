@@ -86,7 +86,7 @@ chatbot:
     - name: LLM_PROVIDER
       value: "openai"
     - name: OPENAI_MODEL
-      value: "gpt-5.4-mini"
+      value: "gpt-4o-mini"
     - name: VECTOR_STORE
       value: "redis"
     - name: VECTOR_INDEX_NAME
@@ -102,7 +102,7 @@ chatbot:
     - name: REDIS_URL
       value: "redis://example-agent-chart-redis.{{ .Release.Namespace }}:6379"
     - name: VS_AGENT_ADMIN_URL
-      value: "http://example-agent.{{ .Release.Namespace }}:3000"
+      value: "http://example-agent-chart-example-agent.{{ .Release.Namespace }}:3000"
     - name: POSTGRES_HOST
       value: "example-agent-chart-postgres.{{ .Release.Namespace }}"
     - name: CREDENTIAL_DEFINITION_ID
