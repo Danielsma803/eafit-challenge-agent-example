@@ -104,7 +104,7 @@ jobs:
         run: |
           kubectl create configmap example-agent-agent-pack \
             --namespace "$CHART_NAMESPACE" \
-            --from-file=agent-pack.yaml=agent-pack.yaml \
+            --from-file=agent-pack.yaml=app/agent-packs/example-agent/agent-pack.yaml \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via Helm
