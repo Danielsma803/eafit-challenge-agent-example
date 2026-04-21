@@ -61,7 +61,9 @@ jobs:
             exit 1
           fi
           mkdir -p ~/.kube
-          echo "${{ secrets.OVH_KUBECONFIG }}" > ~/.kube/config
+          cat <<'KUBEEOF' > ~/.kube/config
+          ${{ secrets.OVH_KUBECONFIG }}
+          KUBEEOF
           chmod 600 ~/.kube/config
           # Verify connection
           kubectl cluster-info || { echo "::error::Could not connect to Kubernetes cluster. Check your OVH_KUBECONFIG secret."; exit 1; }
