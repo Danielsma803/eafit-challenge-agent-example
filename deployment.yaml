@@ -144,7 +144,7 @@ vs-agent-chart:
   publicPort: 3001
   didcommLabel: "Example Agent"
   didcommInvitationImageUrl: "https://hologram.zone/images/github.svg"
-  eventsBaseUrl: http://danielsampayo-chatbot:3003
+  eventsBaseUrl: http://danielsampayo-chatbot.{{ .Release.Namespace }}:3003
   ingress:
     host: "danielsampayo-agent.{{ .Values.global.domain }}"
     tlsSecret: "danielsampayo-agent.{{ .Values.global.domain }}-cert"
@@ -155,9 +155,11 @@ vs-agent-chart:
       host: ""
   extraEnv:
     - name: REDIS_HOST
-      value: "danielsampayo-redis"
+      value: "danielsampayo-redis.{{ .Release.Namespace }}"
     - name: POSTGRES_HOST
-      value: "danielsampayo-postgres"
+      value: "danielsampayo-postgres.{{ .Release.Namespace }}"
+    - name: DB_HOST
+      value: "danielsampayo-postgres.{{ .Release.Namespace }}"
     - name: POSTGRES_USER
       value: "example_agent_db"
     - name: POSTGRES_DB

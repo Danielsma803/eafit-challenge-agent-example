@@ -142,10 +142,12 @@ jobs:
             .chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY = env(MCP_KEY) |
             .chatbot.secret.POSTGRES_PASSWORD = env(POSTGRES_PASSWORD) |
             .postgres.secret.POSTGRES_PASSWORD = env(POSTGRES_PASSWORD) |
-            (."vs-agent-chart".extraEnv[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres" |
-            (."vs-agent-chart".extraEnv[] | select(.name == "REDIS_HOST")).value = env(RELEASE_NAME) + "-redis" |
+            (."vs-agent-chart".extraEnv[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres." + env(CHART_NAMESPACE) |
+            (."vs-agent-chart".extraEnv[] | select(.name == "DB_HOST")).value = env(RELEASE_NAME) + "-postgres." + env(CHART_NAMESPACE) |
+            (."vs-agent-chart".extraEnv[] | select(.name == "REDIS_HOST")).value = env(RELEASE_NAME) + "-redis." + env(CHART_NAMESPACE) |
             (."vs-agent-chart".extraEnv[] | select(.name == "POSTGRES_PASSWORD")).value = env(POSTGRES_PASSWORD) |
-            (."vs-agent-chart".extraEnv[] | select(.name == "AGENT_WALLET_KEY")).value = env(WALLET_KEY)
+            (."vs-agent-chart".extraEnv[] | select(.name == "AGENT_WALLET_KEY")).value = env(WALLET_KEY) |
+            ."vs-agent-chart".eventsBaseUrl = "http://" + env(RELEASE_NAME) + "-chatbot." + env(CHART_NAMESPACE) + ":3003"
           ' /tmp/helm-values.yaml
 
           helm upgrade --install "$RELEASE_NAME" "$CHART_SOURCE" \
