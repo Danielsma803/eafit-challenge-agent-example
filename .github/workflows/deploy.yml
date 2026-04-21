@@ -52,20 +52,29 @@ jobs:
 
       - name: Set up kubeconfig
         run: |
+          if [ -z "${{ secrets.OVH_KUBECONFIG }}" ]; then
+            echo "::error::OVH_KUBECONFIG secret is not set. Please add it to your GitHub Secrets."
+            exit 1
+          fi
+          if [ -z "${{ secrets.K8S_NAMESPACE }}" ]; then
+            echo "::error::K8S_NAMESPACE secret is not set. Please add it to your GitHub Secrets."
+            exit 1
+          fi
           mkdir -p ~/.kube
-          cat > ~/.kube/config <<'KUBEEOF'
-          ${{ secrets.OVH_KUBECONFIG }}
-          KUBEEOF
+          echo "${{ secrets.OVH_KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          # Verify connection
+          kubectl cluster-info || { echo "::error::Could not connect to Kubernetes cluster. Check your OVH_KUBECONFIG secret."; exit 1; }
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4
         with:
-          version: 'v1.29.9'
+          version: "v1.29.9"
 
       - name: Install Helm
         uses: azure/setup-helm@v4
         with:
-          version: 'v3.14.0'
+          version: "v3.14.0"
 
       # -----------------------------------------------------------------------
       # DEPLOY: Install/upgrade via Helm (hologram-generic-ai-agent-chart)
@@ -74,6 +83,7 @@ jobs:
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
           NAMESPACE="${CHART_NAMESPACE}"
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
 
           # VS Agent DB secret
           VSAGENT_DB_PWD="${{ secrets.EXAMPLE_AGENT_VSAGENT_DB_PASSWORD }}"

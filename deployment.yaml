@@ -139,13 +139,13 @@ artemis:
 # === VS Agent ===
 vs-agent-chart:
   enabled: true
-  name: barber-agent
-  didcommLabel: "Barber Agent"
+  name: example-agent
+  didcommLabel: "Example Agent"
   didcommInvitationImageUrl: "https://hologram.zone/images/github.svg"
-  eventsBaseUrl: http://barber-agent-chart-chatbot:3003
+  eventsBaseUrl: http://example-agent-chart-chatbot:3003
   ingress:
-    host: "barber-agent.{{ .Values.global.domain }}"
-    tlsSecret: "barber-agent.{{ .Values.global.domain }}-cert"
+    host: "example-agent.{{ .Values.global.domain }}"
+    tlsSecret: "example-agent.{{ .Values.global.domain }}-cert"
     public:
       enableCors: true
     private:
