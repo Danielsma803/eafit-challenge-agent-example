@@ -140,6 +140,8 @@ artemis:
 vs-agent-chart:
   enabled: true
   name: agent
+  adminPort: 3000
+  publicPort: 3001
   didcommLabel: "Example Agent"
   didcommInvitationImageUrl: "https://hologram.zone/images/github.svg"
   eventsBaseUrl: http://danielsampayo-chatbot:3003
@@ -163,6 +165,10 @@ vs-agent-chart:
     - name: AGENT_ADMIN_PORT
       value: "3000"
     - name: AGENT_PUBLIC_PORT
+      value: "3001"
+    - name: ADMIN_PORT
+      value: "3000"
+    - name: PORT
       value: "3001"
     - name: POSTGRES_PASSWORD
       value: "placeholder"
