@@ -111,10 +111,7 @@ jobs:
           fi
 
           # Show all secrets for debugging
-          echo "--- All secrets in namespace ---"
-          kubectl get secrets -n "$CHART_NAMESPACE" -o name
-          echo "--- Password (spaced for debug) ---"
-          echo "$(echo "$PW" | sed 's/./& /g')"
+
 
           # Persist for subsequent steps
           echo "RESOLVED_PG_PASSWORD=${PW}" >> "$GITHUB_ENV"
@@ -184,7 +181,7 @@ jobs:
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
           export POSTGRES_PASSWORD="$RESOLVED_PG_PASSWORD"
 
-          echo "DEBUG Helm deploy — password (spaced): $(echo "$POSTGRES_PASSWORD" | sed 's/./& /g')"
+
 
           yq -i '
             .credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID) |
