@@ -131,10 +131,16 @@ jobs:
           # Inject dynamic values and secrets using yq
           export RELEASE_NAME CHART_NAMESPACE WALLET_KEY MCP_KEY
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
+          # Attempt to retrieve existing password from cluster to avoid auth failures
+          EXISTING_PWD=$(kubectl get secret -n "$CHART_NAMESPACE" "${RELEASE_NAME}-postgres" -o jsonpath='{.data.POSTGRES_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+
           export POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}"
-          if [ -z "$POSTGRES_PASSWORD" ]; then
-            POSTGRES_PASSWORD="changeme"
-            echo "::warning::EXAMPLE_AGENT_POSTGRES_PASSWORD missing — using 'changeme'"
+          if [ -n "$EXISTING_PWD" ]; then
+            POSTGRES_PASSWORD="$EXISTING_PWD"
+            echo "::info::Using existing password found in cluster"
+          elif [ -z "$POSTGRES_PASSWORD" ]; then
+            POSTGRES_PASSWORD="placeholder"
+            echo "::warning::EXAMPLE_AGENT_POSTGRES_PASSWORD missing and no existing secret found — using 'placeholder'"
           fi
 
           yq -i '
@@ -181,7 +187,8 @@ jobs:
             # 1. Try to start port-forward if not already running
             if ! pgrep -f "port-forward.*3002:3000" > /dev/null; then
               # Try several possible service names
-              SVC_NAME="${RELEASE_NAME}-example-agent"
+              SVC_NAME="${RELEASE_NAME}-agent"
+              kubectl get svc "$SVC_NAME" -n "$CHART_NAMESPACE" > /dev/null 2>&1 || SVC_NAME="${RELEASE_NAME}-example-agent"
               kubectl get svc "$SVC_NAME" -n "$CHART_NAMESPACE" > /dev/null 2>&1 || SVC_NAME="${RELEASE_NAME}"
               kubectl get svc "$SVC_NAME" -n "$CHART_NAMESPACE" > /dev/null 2>&1 || SVC_NAME="example-agent"
               
@@ -193,7 +200,7 @@ jobs:
             # 2. Check if the app responds
             if curl -sf http://localhost:3002/v1/agent > /dev/null; then
               echo "VS Agent is ready and responding!"
-              echo "CHILD_PF_PID=$(pgrep -f 'port-forward.*svc/example-agent')" >> "$GITHUB_ENV"
+              echo "CHILD_PF_PID=$(pgrep -f \"port-forward.*svc/$SVC_NAME\")" >> "$GITHUB_ENV"
               exit 0
             fi
             
