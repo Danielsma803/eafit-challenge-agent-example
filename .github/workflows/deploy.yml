@@ -46,10 +46,12 @@ jobs:
           CHART_VERSION=$(yq '.chartVersion' deployment.yaml)
           CHART_NAMESPACE="${{ secrets.K8S_NAMESPACE }}"
           RELEASE_NAME=$(yq '.nameOverride' deployment.yaml)
+          AGENT_SVC_NAME=$(yq '."vs-agent-chart".name' deployment.yaml)
           echo "CHART_SOURCE=${CHART_SOURCE}" >> "$GITHUB_ENV"
           echo "CHART_VERSION=${CHART_VERSION}" >> "$GITHUB_ENV"
           echo "CHART_NAMESPACE=${CHART_NAMESPACE}" >> "$GITHUB_ENV"
           echo "RELEASE_NAME=${RELEASE_NAME}" >> "$GITHUB_ENV"
+          echo "AGENT_SVC_NAME=${AGENT_SVC_NAME}" >> "$GITHUB_ENV"
 
       - name: Set up kubeconfig
         run: |
@@ -177,7 +179,7 @@ jobs:
           fi
 
           # Use the resolved password everywhere
-          export RELEASE_NAME CHART_NAMESPACE WALLET_KEY
+          export RELEASE_NAME CHART_NAMESPACE WALLET_KEY AGENT_SVC_NAME
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
           export POSTGRES_PASSWORD="$RESOLVED_PG_PASSWORD"
 
@@ -190,7 +192,7 @@ jobs:
             (.chatbot.env[] | select(.name == "OPENAI_BASE_URL")).value = env(OPENAI_BASE_URL) |
             (.chatbot.env[] | select(.name == "LOG_LEVEL")).value = env(LOG_LEVEL) |
             (.chatbot.env[] | select(.name == "REDIS_URL")).value = "redis://" + env(RELEASE_NAME) + "-redis." + env(CHART_NAMESPACE) + ":6379" |
-            (.chatbot.env[] | select(.name == "VS_AGENT_ADMIN_URL")).value = "http://" + env(RELEASE_NAME) + "-agent." + env(CHART_NAMESPACE) + ":3000" |
+            (.chatbot.env[] | select(.name == "VS_AGENT_ADMIN_URL")).value = "http://" + env(AGENT_SVC_NAME) + "." + env(CHART_NAMESPACE) + ":3000" |
             (.chatbot.env[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres." + env(CHART_NAMESPACE) |
             .chatbot.secret.OPENAI_API_KEY = env(OPENAI_API_KEY) |
             .chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY = env(MCP_CONFIG_ENCRYPTION_KEY) |
@@ -227,8 +229,8 @@ jobs:
           # Restart chatbot
           kubectl rollout restart statefulset/${RELEASE_NAME}-chatbot -n "$CHART_NAMESPACE"
 
-          # Find and restart the agent statefulset
-          AGENT_STS=$(kubectl get statefulsets -n "$CHART_NAMESPACE" --no-headers -o custom-columns=":metadata.name" | grep -E "^${RELEASE_NAME}.*agent" | head -1)
+          # Restart the agent statefulset using the name from deployment.yaml
+          AGENT_STS="$AGENT_SVC_NAME"
           if [ -n "$AGENT_STS" ]; then
             echo "Restarting agent statefulset: $AGENT_STS"
             kubectl rollout restart statefulset/"$AGENT_STS" -n "$CHART_NAMESPACE"
@@ -265,11 +267,8 @@ jobs:
           for i in {1..5}; do
             # 1. Try to start port-forward if not already running
             if ! pgrep -f "port-forward.*3002:3000" > /dev/null; then
-              # Try several possible service names
-              SVC_NAME="${RELEASE_NAME}-agent"
-              kubectl get svc "$SVC_NAME" -n "$CHART_NAMESPACE" > /dev/null 2>&1 || SVC_NAME="${RELEASE_NAME}-example-agent"
-              kubectl get svc "$SVC_NAME" -n "$CHART_NAMESPACE" > /dev/null 2>&1 || SVC_NAME="${RELEASE_NAME}"
-              kubectl get svc "$SVC_NAME" -n "$CHART_NAMESPACE" > /dev/null 2>&1 || SVC_NAME="example-agent"
+              # Use the agent service name from deployment.yaml
+              SVC_NAME="$AGENT_SVC_NAME"
               
               echo "Attempting port-forward to svc/$SVC_NAME..."
               kubectl port-forward -n "$CHART_NAMESPACE" "svc/$SVC_NAME" 3002:3000 > /dev/null 2>&1 &

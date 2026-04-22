@@ -141,7 +141,7 @@ artemis:
 # === VS Agent ===
 vs-agent-chart:
   enabled: true
-  name: agent
+  name: danielsampayo-agent
   adminPort: 3000
   publicPort: 3001
   eventsPort: 3002
