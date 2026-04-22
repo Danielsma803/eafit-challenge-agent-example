@@ -206,6 +206,17 @@ jobs:
             ."vs-agent-chart".eventsBaseUrl = "http://" + env(RELEASE_NAME) + "-chatbot." + env(CHART_NAMESPACE) + ":3003"
           ' /tmp/helm-values.yaml
 
+          # Clean up orphaned resources from old 'agent' deployment (name was changed to danielsampayo-agent)
+          echo "Cleaning up old agent resources..."
+          kubectl delete statefulset agent -n "$CHART_NAMESPACE" --ignore-not-found=true
+          kubectl delete svc agent -n "$CHART_NAMESPACE" --ignore-not-found=true
+          kubectl delete ingress -n "$CHART_NAMESPACE" -l app=agent --ignore-not-found=true 2>/dev/null || true
+          # Also delete by known ingress names
+          for ING in public-agent private-agent agent; do
+            kubectl delete ingress "$ING" -n "$CHART_NAMESPACE" --ignore-not-found=true 2>/dev/null || true
+          done
+          echo "Cleanup complete."
+
           helm upgrade --install "$RELEASE_NAME" "$CHART_SOURCE" \
             --version "$CHART_VERSION" \
             --namespace "$CHART_NAMESPACE" \
