@@ -175,6 +175,8 @@ vs-agent-chart:
       value: "3000"
     - name: PORT
       value: "3001"
+    - name: EVENTS_PORT
+      value: "3002"
     - name: POSTGRES_PASSWORD
       value: "placeholder"
     - name: AGENT_WALLET_ID
