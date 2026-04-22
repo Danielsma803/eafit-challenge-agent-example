@@ -68,7 +68,6 @@ jobs:
           ${{ secrets.OVH_KUBECONFIG }}
           KUBEEOF
           chmod 600 ~/.kube/config
-          # Verify connection to your namespace
           kubectl get pods -n "${{ secrets.K8S_NAMESPACE }}" || { echo "::error::Could not connect to cluster or namespace is not accessible."; exit 1; }
 
       - name: Install kubectl
@@ -82,19 +81,14 @@ jobs:
           version: "v3.14.0"
 
       # -----------------------------------------------------------------------
-      # DEPLOY: Install/upgrade via Helm (hologram-generic-ai-agent-chart)
+      # DEPLOY
       # -----------------------------------------------------------------------
-
-      # Determine the ONE password to use everywhere
       - name: Resolve Postgres password
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
           # Priority: GitHub secret > existing cluster secret > fallback
           PW="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}"
-
           if [ -z "$PW" ]; then
-            echo "::warning::GitHub secret EXAMPLE_AGENT_POSTGRES_PASSWORD is empty"
-            # Try to read from cluster
             for SEC in "${RELEASE_NAME}-postgres" "${RELEASE_NAME}-postgresql" "example-agent-db-secret"; do
               for KEY in POSTGRES_PASSWORD postgres-password password; do
                 VAL=$(kubectl get secret -n "$CHART_NAMESPACE" "$SEC" -o jsonpath="{.data.$KEY}" 2>/dev/null | base64 -d 2>/dev/null || true)
@@ -106,34 +100,22 @@ jobs:
               done
             done
           fi
-
           if [ -z "$PW" ]; then
             PW="placeholder"
-            echo "::warning::No password found anywhere — using 'placeholder'"
+            echo "::warning::No password found — using 'placeholder'"
           fi
-
-          # Show all secrets for debugging
-
-
-          # Persist for subsequent steps
           echo "RESOLVED_PG_PASSWORD=${PW}" >> "$GITHUB_ENV"
 
-      # Reset password INSIDE the running PostgreSQL pod so it matches
       - name: Sync Postgres password in running DB
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
           PG_POD="${RELEASE_NAME}-postgres-0"
           PW="$RESOLVED_PG_PASSWORD"
-
-          echo "Checking if postgres pod $PG_POD is running..."
           if kubectl get pod -n "$CHART_NAMESPACE" "$PG_POD" --no-headers 2>/dev/null | grep -q Running; then
-            echo "Resetting password for user '$POSTGRES_USER' inside $PG_POD..."
-            # POSTGRES_USER is the superuser (not 'postgres') since the container was initialized with it
             kubectl exec -n "$CHART_NAMESPACE" "$PG_POD" -- \
               psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -c "ALTER USER \"${POSTGRES_USER}\" WITH PASSWORD '${PW}';" && \
-              echo "Password synced successfully inside PostgreSQL." || {
-                echo "::warning::Could not reset password via psql. Continuing..."
-              }
+              echo "Password synced inside PostgreSQL." || \
+              echo "::warning::Could not reset password via psql. Continuing..."
           else
             echo "Postgres pod not running yet — password will be set on first init."
           fi
@@ -141,12 +123,9 @@ jobs:
       - name: Create K8s secrets
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
-          NAMESPACE="${CHART_NAMESPACE}"
-          PW="$RESOLVED_PG_PASSWORD"
-
           kubectl create secret generic example-agent-db-secret \
-            --namespace "$NAMESPACE" \
-            --from-literal=POSTGRES_PASSWORD="$PW" \
+            --namespace "$CHART_NAMESPACE" \
+            --from-literal=POSTGRES_PASSWORD="$RESOLVED_PG_PASSWORD" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Create agent pack ConfigMap
@@ -160,14 +139,12 @@ jobs:
       - name: Deploy via Helm
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
-          # Strip chart metadata before passing to Helm
           yq 'del(.chartSource, .chartVersion)' deployment.yaml > /tmp/helm-values.yaml
 
-          # Inject credential definition ID from config.env
           export CREDENTIAL_DEFINITION_ID
           yq -i '.credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID)' /tmp/helm-values.yaml
 
-          # Validate and/or generate keys
+          # Generate keys if not provided
           export MCP_CONFIG_ENCRYPTION_KEY="${{ secrets.EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY }}"
           if [ ${#MCP_CONFIG_ENCRYPTION_KEY} -ne 64 ]; then
             export MCP_CONFIG_ENCRYPTION_KEY=$(openssl rand -hex 32)
@@ -179,12 +156,9 @@ jobs:
             echo "::warning::WALLET_KEY missing — using generated key"
           fi
 
-          # Use the resolved password everywhere
           export RELEASE_NAME CHART_NAMESPACE WALLET_KEY AGENT_SVC_NAME
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
           export POSTGRES_PASSWORD="$RESOLVED_PG_PASSWORD"
-
-
 
           yq -i '
             .credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID) |
@@ -207,118 +181,52 @@ jobs:
             ."vs-agent-chart".eventsBaseUrl = "http://" + env(RELEASE_NAME) + "-chatbot." + env(CHART_NAMESPACE) + ":3003"
           ' /tmp/helm-values.yaml
 
-          # Clean up orphaned resources from old 'agent' deployment (name was changed to danielsampayo-agent)
-          echo "Cleaning up old agent resources..."
-          kubectl delete statefulset agent -n "$CHART_NAMESPACE" --ignore-not-found=true
-          kubectl delete svc agent -n "$CHART_NAMESPACE" --ignore-not-found=true
-          kubectl delete ingress -n "$CHART_NAMESPACE" -l app=agent --ignore-not-found=true 2>/dev/null || true
-          # Also delete by known ingress names
-          for ING in public-agent private-agent agent; do
-            kubectl delete ingress "$ING" -n "$CHART_NAMESPACE" --ignore-not-found=true 2>/dev/null || true
-          done
-          echo "Cleanup complete."
-
           helm upgrade --install "$RELEASE_NAME" "$CHART_SOURCE" \
             --version "$CHART_VERSION" \
             --namespace "$CHART_NAMESPACE" \
             --values /tmp/helm-values.yaml
 
-      - name: Debug deployed resources
+      - name: Restart and wait for services
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
-          echo "=== StatefulSets ==="
-          kubectl get statefulsets -n "$CHART_NAMESPACE" -o wide
-          echo "=== Services ==="
-          kubectl get svc -n "$CHART_NAMESPACE" -o wide
-          echo "=== Pods ==="
-          kubectl get pods -n "$CHART_NAMESPACE" -o wide
-          echo "=== Helm release content ==="
-          helm get values "$RELEASE_NAME" -n "$CHART_NAMESPACE" 2>/dev/null | head -50 || echo "Could not get Helm values"
-
-      - name: Restart chatbot and agent
-        if: inputs.step == 'deploy' || inputs.step == 'all'
-        run: |
-          # Restart chatbot
           kubectl rollout restart statefulset/${RELEASE_NAME}-chatbot -n "$CHART_NAMESPACE"
+          kubectl rollout restart statefulset/${AGENT_SVC_NAME} -n "$CHART_NAMESPACE"
 
-          # Restart the agent statefulset using the name from deployment.yaml
-          AGENT_STS="$AGENT_SVC_NAME"
-          if [ -n "$AGENT_STS" ]; then
-            echo "Restarting agent statefulset: $AGENT_STS"
-            kubectl rollout restart statefulset/"$AGENT_STS" -n "$CHART_NAMESPACE"
-          else
-            echo "::warning::No agent statefulset found matching '${RELEASE_NAME}.*agent'. Available:"
-            kubectl get statefulsets -n "$CHART_NAMESPACE" --no-headers
-          fi
-
-          # Wait for chatbot
           if ! kubectl rollout status statefulset/${RELEASE_NAME}-chatbot -n "$CHART_NAMESPACE" --timeout=300s; then
             echo "::error::Chatbot failed to become ready."
-            kubectl logs -n "$CHART_NAMESPACE" -l app.kubernetes.io/instance="${RELEASE_NAME}" -c chatbot --tail=50
+            kubectl logs -n "$CHART_NAMESPACE" "${RELEASE_NAME}-chatbot-0" --tail=50
             exit 1
           fi
 
-          # Wait for agent (if found)
-          if [ -n "$AGENT_STS" ]; then
-            echo "Waiting for agent statefulset $AGENT_STS..."
-            if ! kubectl rollout status statefulset/"$AGENT_STS" -n "$CHART_NAMESPACE" --timeout=300s; then
-              echo "::error::Agent failed to become ready. Logs:"
-              kubectl logs -n "$CHART_NAMESPACE" "${AGENT_STS}-0" --all-containers --tail=100
-              exit 1
-            fi
+          if ! kubectl rollout status statefulset/${AGENT_SVC_NAME} -n "$CHART_NAMESPACE" --timeout=300s; then
+            echo "::error::Agent failed to become ready."
+            kubectl logs -n "$CHART_NAMESPACE" "${AGENT_SVC_NAME}-0" --all-containers --tail=100
+            exit 1
           fi
 
       # -----------------------------------------------------------------------
-      # GET-CREDENTIALS: Obtain Service credential from eafit-challenge organization
+      # GET-CREDENTIALS
       # -----------------------------------------------------------------------
       - name: Port-forward and Wait for VS Agent
         if: inputs.step == 'get-credentials' || inputs.step == 'all'
         run: |
-          # Retry loop to wait for the service to exist, start port-forward, and get a response
           echo "Waiting for VS Agent to be ready..."
           for i in {1..5}; do
-            # 1. Try to start port-forward if not already running
             if ! pgrep -f "port-forward.*3002:3000" > /dev/null; then
-              # Use the agent service name from deployment.yaml
-              SVC_NAME="$AGENT_SVC_NAME"
-              
-              echo "Attempting port-forward to svc/$SVC_NAME..."
-              kubectl port-forward -n "$CHART_NAMESPACE" "svc/$SVC_NAME" 3002:3000 > /dev/null 2>&1 &
-              echo "Started port-forward attempt to $SVC_NAME..."
+              echo "Attempting port-forward to svc/$AGENT_SVC_NAME..."
+              kubectl port-forward -n "$CHART_NAMESPACE" "svc/$AGENT_SVC_NAME" 3002:3000 > /dev/null 2>&1 &
             fi
-
-            # 2. Check if the app responds
             if curl -sf http://localhost:3002/v1/agent > /dev/null; then
               echo "VS Agent is ready and responding!"
-              echo "CHILD_PF_PID=$(pgrep -f \"port-forward.*svc/$SVC_NAME\")" >> "$GITHUB_ENV"
+              echo "CHILD_PF_PID=$(pgrep -f \"port-forward.*svc/$AGENT_SVC_NAME\")" >> "$GITHUB_ENV"
               exit 0
             fi
-            
             echo "Attempt $i/5: VS Agent not ready, sleeping 10s..."
             sleep 10
           done
-          echo "::error::VS Agent API failed to respond after 5 minutes. Debugging info follows:"
+          echo "::error::VS Agent API failed to respond."
           kubectl get pods -n "$CHART_NAMESPACE"
-          # Find the pod that is NOT Running, prioritizing current release
-          # (We strip '-chart' or '-agent' from RELEASE_NAME to find pods more easily)
-          STRIPPED_NAME=$(echo "${RELEASE_NAME}" | sed -E 's/-(chart|agent)//g')
-          CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep -E "(${RELEASE_NAME}|${STRIPPED_NAME})" | head -n 1 | awk '{print $1}')
-          if [ -z "$CRASHING_POD" ]; then
-             # Fallback 1: any non-running pod related to chatbot/agent
-             CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers | grep -v "Running" | grep -E "(chatbot|agent)" | head -n 1 | awk '{print $1}')
-          fi
-          if [ -z "$CRASHING_POD" ]; then
-             # Fallback 2: any pod related to the release
-             CRASHING_POD=$(kubectl get pods -n "$CHART_NAMESPACE" --no-headers -o custom-columns=":metadata.name" | grep -E "${RELEASE_NAME}" | head -n 1)
-          fi
-
-          if [ -n "$CRASHING_POD" ]; then
-            echo "Logs for pod $CRASHING_POD:"
-            kubectl logs "$CRASHING_POD" -n "$CHART_NAMESPACE" --all-containers --tail=100
-          else
-            echo "Could not identify relevant pod. General logs for instance ${RELEASE_NAME}:"
-            kubectl logs -n "$CHART_NAMESPACE" -l app.kubernetes.io/instance="${RELEASE_NAME}" --all-containers --tail=50
-          fi
+          kubectl logs -n "$CHART_NAMESPACE" "${AGENT_SVC_NAME}-0" --all-containers --tail=100 2>/dev/null || true
           exit 1
 
       - name: Verify organization Agent
@@ -340,7 +248,6 @@ jobs:
       - name: Get Service credential
         if: inputs.step == 'get-credentials' || inputs.step == 'all'
         run: |
-          # Use ORG_VS_ADMIN_URL if port-forward didn't happen
           if [ -n "${ORG_PF_PID:-}" ]; then
             ORG_ADMIN_API="http://localhost:3000"
           else
@@ -390,6 +297,6 @@ jobs:
         run: |
           echo "## Example Agent VS" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **VS Agent:** https://example-agent.eafit.testnet.verana.network/.well-known/did.json" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **VS Agent:** https://${AGENT_SVC_NAME}.${RELEASE_NAME:+$( echo ${CHART_NAMESPACE} | head -c0)}team-c.teams.eafit.testnet.verana.network/.well-known/did.json" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Network:** testnet" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Chart:** ${CHART_SOURCE:-}:${CHART_VERSION:-}" >> "$GITHUB_STEP_SUMMARY"
