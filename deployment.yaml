@@ -144,6 +144,7 @@ vs-agent-chart:
   name: agent
   adminPort: 3000
   publicPort: 3001
+  eventsPort: 3002
   didcommLabel: "Example Agent"
   didcommInvitationImageUrl: "https://hologram.zone/images/github.svg"
   eventsBaseUrl: http://danielsampayo-chatbot.{{ .Release.Namespace }}:3003
