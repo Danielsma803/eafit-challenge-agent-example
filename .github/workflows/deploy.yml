@@ -212,14 +212,49 @@ jobs:
             --namespace "$CHART_NAMESPACE" \
             --values /tmp/helm-values.yaml
 
-      - name: Restart chatbot to pick up ConfigMap changes
+      - name: Debug deployed resources
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
+          echo "=== StatefulSets ==="
+          kubectl get statefulsets -n "$CHART_NAMESPACE" -o wide
+          echo "=== Services ==="
+          kubectl get svc -n "$CHART_NAMESPACE" -o wide
+          echo "=== Pods ==="
+          kubectl get pods -n "$CHART_NAMESPACE" -o wide
+          echo "=== Helm release content ==="
+          helm get values "$RELEASE_NAME" -n "$CHART_NAMESPACE" 2>/dev/null | head -50 || echo "Could not get Helm values"
+
+      - name: Restart chatbot and agent
+        if: inputs.step == 'deploy' || inputs.step == 'all'
+        run: |
+          # Restart chatbot
           kubectl rollout restart statefulset/${RELEASE_NAME}-chatbot -n "$CHART_NAMESPACE"
+
+          # Find and restart the agent statefulset
+          AGENT_STS=$(kubectl get statefulsets -n "$CHART_NAMESPACE" --no-headers -o custom-columns=":metadata.name" | grep -E "^${RELEASE_NAME}.*agent" | head -1)
+          if [ -n "$AGENT_STS" ]; then
+            echo "Restarting agent statefulset: $AGENT_STS"
+            kubectl rollout restart statefulset/"$AGENT_STS" -n "$CHART_NAMESPACE"
+          else
+            echo "::warning::No agent statefulset found matching '${RELEASE_NAME}.*agent'. Available:"
+            kubectl get statefulsets -n "$CHART_NAMESPACE" --no-headers
+          fi
+
+          # Wait for chatbot
           if ! kubectl rollout status statefulset/${RELEASE_NAME}-chatbot -n "$CHART_NAMESPACE" --timeout=300s; then
-            echo "::error::Chatbot failed to become ready. Showing logs of the pod:"
-            kubectl logs -n "$CHART_NAMESPACE" -l app.kubernetes.io/instance="${RELEASE_NAME}" -c chatbot --tail=100
+            echo "::error::Chatbot failed to become ready."
+            kubectl logs -n "$CHART_NAMESPACE" -l app.kubernetes.io/instance="${RELEASE_NAME}" -c chatbot --tail=50
             exit 1
+          fi
+
+          # Wait for agent (if found)
+          if [ -n "$AGENT_STS" ]; then
+            echo "Waiting for agent statefulset $AGENT_STS..."
+            if ! kubectl rollout status statefulset/"$AGENT_STS" -n "$CHART_NAMESPACE" --timeout=300s; then
+              echo "::error::Agent failed to become ready. Logs:"
+              kubectl logs -n "$CHART_NAMESPACE" "${AGENT_STS}-0" --all-containers --tail=100
+              exit 1
+            fi
           fi
 
       # -----------------------------------------------------------------------
