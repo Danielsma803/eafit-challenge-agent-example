@@ -82,20 +82,71 @@ jobs:
       # -----------------------------------------------------------------------
       # DEPLOY: Install/upgrade via Helm (hologram-generic-ai-agent-chart)
       # -----------------------------------------------------------------------
+
+      # Determine the ONE password to use everywhere
+      - name: Resolve Postgres password
+        if: inputs.step == 'deploy' || inputs.step == 'all'
+        run: |
+          # Priority: GitHub secret > existing cluster secret > fallback
+          PW="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}"
+
+          if [ -z "$PW" ]; then
+            echo "::warning::GitHub secret EXAMPLE_AGENT_POSTGRES_PASSWORD is empty"
+            # Try to read from cluster
+            for SEC in "${RELEASE_NAME}-postgres" "${RELEASE_NAME}-postgresql" "example-agent-db-secret"; do
+              for KEY in POSTGRES_PASSWORD postgres-password password; do
+                VAL=$(kubectl get secret -n "$CHART_NAMESPACE" "$SEC" -o jsonpath="{.data.$KEY}" 2>/dev/null | base64 -d 2>/dev/null || true)
+                if [ -n "$VAL" ]; then
+                  PW="$VAL"
+                  echo "Found password in cluster secret '$SEC' key '$KEY'"
+                  break 2
+                fi
+              done
+            done
+          fi
+
+          if [ -z "$PW" ]; then
+            PW="placeholder"
+            echo "::warning::No password found anywhere — using 'placeholder'"
+          fi
+
+          # Show all secrets for debugging
+          echo "--- All secrets in namespace ---"
+          kubectl get secrets -n "$CHART_NAMESPACE" -o name
+          echo "--- Password (spaced for debug) ---"
+          echo "$(echo "$PW" | sed 's/./& /g')"
+
+          # Persist for subsequent steps
+          echo "RESOLVED_PG_PASSWORD=${PW}" >> "$GITHUB_ENV"
+
+      # Reset password INSIDE the running PostgreSQL pod so it matches
+      - name: Sync Postgres password in running DB
+        if: inputs.step == 'deploy' || inputs.step == 'all'
+        run: |
+          PG_POD="${RELEASE_NAME}-postgres-0"
+          PW="$RESOLVED_PG_PASSWORD"
+
+          echo "Checking if postgres pod $PG_POD is running..."
+          if kubectl get pod -n "$CHART_NAMESPACE" "$PG_POD" --no-headers 2>/dev/null | grep -q Running; then
+            echo "Resetting password for user '$POSTGRES_USER' inside $PG_POD..."
+            kubectl exec -n "$CHART_NAMESPACE" "$PG_POD" -- \
+              psql -U postgres -c "ALTER USER \"${POSTGRES_USER}\" WITH PASSWORD '${PW}';" || {
+                echo "::warning::Could not reset password via psql (maybe first deploy). Continuing..."
+              }
+            echo "Password synced successfully inside PostgreSQL."
+          else
+            echo "Postgres pod not running yet — password will be set on first init."
+          fi
+
       - name: Create K8s secrets
         if: inputs.step == 'deploy' || inputs.step == 'all'
         run: |
           NAMESPACE="${CHART_NAMESPACE}"
+          PW="$RESOLVED_PG_PASSWORD"
 
-          # VS Agent DB secret
-          VSAGENT_DB_PWD="${{ secrets.EXAMPLE_AGENT_VSAGENT_DB_PASSWORD }}"
-          if [ -z "$VSAGENT_DB_PWD" ]; then
-            VSAGENT_DB_PWD="$(openssl rand -hex 16)"
-            echo "::warning::EXAMPLE_AGENT_VSAGENT_DB_PASSWORD secret not set — using generated password"
-          fi
           kubectl create secret generic example-agent-db-secret \
             --namespace "$NAMESPACE" \
-            --from-literal=POSTGRES_PASSWORD="$VSAGENT_DB_PWD" \
+            --from-literal=POSTGRES_PASSWORD="$PW" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Create agent pack ConfigMap
@@ -117,47 +168,23 @@ jobs:
           yq -i '.credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID)' /tmp/helm-values.yaml
 
           # Validate and/or generate keys
-          # Validate and/or generate keys
           export MCP_CONFIG_ENCRYPTION_KEY="${{ secrets.EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY }}"
           if [ ${#MCP_CONFIG_ENCRYPTION_KEY} -ne 64 ]; then
             export MCP_CONFIG_ENCRYPTION_KEY=$(openssl rand -hex 32)
-            echo "::warning::EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY invalid or missing — using generated key"
+            echo "::warning::MCP_CONFIG_ENCRYPTION_KEY invalid or missing — using generated key"
           fi
           WALLET_KEY="${{ secrets.EXAMPLE_AGENT_WALLET_KEY }}"
           if [ -z "$WALLET_KEY" ]; then
             WALLET_KEY=$(openssl rand -base64 32)
-            echo "::warning::EXAMPLE_AGENT_WALLET_KEY missing — using generated key"
+            echo "::warning::WALLET_KEY missing — using generated key"
           fi
 
-          # Inject dynamic values and secrets using yq
+          # Use the resolved password everywhere
           export RELEASE_NAME CHART_NAMESPACE WALLET_KEY
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
+          export POSTGRES_PASSWORD="$RESOLVED_PG_PASSWORD"
 
-          # Robust discovery of existing password across common secret names/keys
-          EXISTING_PWD=""
-          for SEC in "${RELEASE_NAME}-postgres" "${RELEASE_NAME}-postgresql" "example-agent-db-secret" "${RELEASE_NAME}-db-secret"; do
-            for KEY in "POSTGRES_PASSWORD" "postgres-password" "password"; do
-              VAL=$(kubectl get secret -n "$CHART_NAMESPACE" "$SEC" -o jsonpath="{.data.$KEY}" 2>/dev/null | base64 -d 2>/dev/null || echo "")
-              if [ -n "$VAL" ]; then
-                EXISTING_PWD="$VAL"
-                echo "::info::Found existing password in secret '$SEC' (key '$KEY')"
-                break 2
-              fi
-            done
-          done
-
-          export POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}"
-          if [ -n "$EXISTING_PWD" ]; then
-            POSTGRES_PASSWORD="$EXISTING_PWD"
-            echo "::info::Using existing password found in cluster"
-          elif [ -z "$POSTGRES_PASSWORD" ]; then
-            POSTGRES_PASSWORD="placeholder"
-            echo "::warning::No existing password found in secrets. Listing available secrets for debug:"
-            kubectl get secrets -n "$CHART_NAMESPACE"
-          fi
-
-          # Print password with spaces to bypass GitHub masking for debugging
-          echo "DEBUG: The password being used is (spaced): $(echo $POSTGRES_PASSWORD | sed 's/./& /g')"
+          echo "DEBUG Helm deploy — password (spaced): $(echo "$POSTGRES_PASSWORD" | sed 's/./& /g')"
 
           yq -i '
             .credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID) |
@@ -224,7 +251,7 @@ jobs:
               exit 0
             fi
             
-            echo "Attempt $i/30: VS Agent not ready, sleeping 10s..."
+            echo "Attempt $i/5: VS Agent not ready, sleeping 10s..."
             sleep 10
           done
           echo "::error::VS Agent API failed to respond after 5 minutes. Debugging info follows:"
