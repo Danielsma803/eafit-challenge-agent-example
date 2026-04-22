@@ -117,9 +117,10 @@ jobs:
           yq -i '.credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID)' /tmp/helm-values.yaml
 
           # Validate and/or generate keys
-          MCP_KEY="${{ secrets.EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY }}"
-          if [ ${#MCP_KEY} -ne 64 ]; then
-            MCP_KEY=$(openssl rand -hex 32)
+          # Validate and/or generate keys
+          export MCP_CONFIG_ENCRYPTION_KEY="${{ secrets.EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY }}"
+          if [ ${#MCP_CONFIG_ENCRYPTION_KEY} -ne 64 ]; then
+            export MCP_CONFIG_ENCRYPTION_KEY=$(openssl rand -hex 32)
             echo "::warning::EXAMPLE_AGENT_MCP_CONFIG_ENCRYPTION_KEY invalid or missing — using generated key"
           fi
           WALLET_KEY="${{ secrets.EXAMPLE_AGENT_WALLET_KEY }}"
@@ -129,8 +130,9 @@ jobs:
           fi
 
           # Inject dynamic values and secrets using yq
-          export RELEASE_NAME CHART_NAMESPACE WALLET_KEY MCP_KEY
+          export RELEASE_NAME CHART_NAMESPACE WALLET_KEY
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
+
           # Robust discovery of existing password across common secret names/keys
           EXISTING_PWD=""
           for SEC in "${RELEASE_NAME}-postgres" "${RELEASE_NAME}-postgresql" "example-agent-db-secret" "${RELEASE_NAME}-db-secret"; do
@@ -150,9 +152,12 @@ jobs:
             echo "::info::Using existing password found in cluster"
           elif [ -z "$POSTGRES_PASSWORD" ]; then
             POSTGRES_PASSWORD="placeholder"
-            echo "::warning::No existing password found and secret is empty — using 'placeholder'"
+            echo "::warning::No existing password found in secrets. Listing available secrets for debug:"
+            kubectl get secrets -n "$CHART_NAMESPACE"
           fi
-          echo "DEBUG: The password being used is: $POSTGRES_PASSWORD"
+
+          # Print password with spaces to bypass GitHub masking for debugging
+          echo "DEBUG: The password being used is (spaced): $(echo $POSTGRES_PASSWORD | sed 's/./& /g')"
 
           yq -i '
             .credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID) |
@@ -164,7 +169,7 @@ jobs:
             (.chatbot.env[] | select(.name == "VS_AGENT_ADMIN_URL")).value = "http://" + env(RELEASE_NAME) + "-agent." + env(CHART_NAMESPACE) + ":3000" |
             (.chatbot.env[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres." + env(CHART_NAMESPACE) |
             .chatbot.secret.OPENAI_API_KEY = env(OPENAI_API_KEY) |
-            .chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY = env(MCP_KEY) |
+            .chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY = env(MCP_CONFIG_ENCRYPTION_KEY) |
             .chatbot.secret.POSTGRES_PASSWORD = env(POSTGRES_PASSWORD) |
             .postgres.secret.POSTGRES_PASSWORD = env(POSTGRES_PASSWORD) |
             (."vs-agent-chart".extraEnv[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres." + env(CHART_NAMESPACE) |
