@@ -128,11 +128,12 @@ jobs:
           echo "Checking if postgres pod $PG_POD is running..."
           if kubectl get pod -n "$CHART_NAMESPACE" "$PG_POD" --no-headers 2>/dev/null | grep -q Running; then
             echo "Resetting password for user '$POSTGRES_USER' inside $PG_POD..."
+            # POSTGRES_USER is the superuser (not 'postgres') since the container was initialized with it
             kubectl exec -n "$CHART_NAMESPACE" "$PG_POD" -- \
-              psql -U postgres -c "ALTER USER \"${POSTGRES_USER}\" WITH PASSWORD '${PW}';" || {
-                echo "::warning::Could not reset password via psql (maybe first deploy). Continuing..."
+              psql -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" -c "ALTER USER \"${POSTGRES_USER}\" WITH PASSWORD '${PW}';" && \
+              echo "Password synced successfully inside PostgreSQL." || {
+                echo "::warning::Could not reset password via psql. Continuing..."
               }
-            echo "Password synced successfully inside PostgreSQL."
           else
             echo "Postgres pod not running yet — password will be set on first init."
           fi
