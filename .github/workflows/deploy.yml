@@ -131,8 +131,18 @@ jobs:
           # Inject dynamic values and secrets using yq
           export RELEASE_NAME CHART_NAMESPACE WALLET_KEY MCP_KEY
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
-          # Attempt to retrieve existing password from cluster to avoid auth failures
-          EXISTING_PWD=$(kubectl get secret -n "$CHART_NAMESPACE" "${RELEASE_NAME}-postgres" -o jsonpath='{.data.POSTGRES_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || echo "")
+          # Robust discovery of existing password across common secret names/keys
+          EXISTING_PWD=""
+          for SEC in "${RELEASE_NAME}-postgres" "${RELEASE_NAME}-postgresql" "example-agent-db-secret" "${RELEASE_NAME}-db-secret"; do
+            for KEY in "POSTGRES_PASSWORD" "postgres-password" "password"; do
+              VAL=$(kubectl get secret -n "$CHART_NAMESPACE" "$SEC" -o jsonpath="{.data.$KEY}" 2>/dev/null | base64 -d 2>/dev/null || echo "")
+              if [ -n "$VAL" ]; then
+                EXISTING_PWD="$VAL"
+                echo "::info::Found existing password in secret '$SEC' (key '$KEY')"
+                break 2
+              fi
+            done
+          done
 
           export POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}"
           if [ -n "$EXISTING_PWD" ]; then
@@ -140,8 +150,9 @@ jobs:
             echo "::info::Using existing password found in cluster"
           elif [ -z "$POSTGRES_PASSWORD" ]; then
             POSTGRES_PASSWORD="placeholder"
-            echo "::warning::EXAMPLE_AGENT_POSTGRES_PASSWORD missing and no existing secret found — using 'placeholder'"
+            echo "::warning::No existing password found and secret is empty — using 'placeholder'"
           fi
+          echo "DEBUG: The password being used is: $POSTGRES_PASSWORD"
 
           yq -i '
             .credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID) |
@@ -183,7 +194,7 @@ jobs:
         run: |
           # Retry loop to wait for the service to exist, start port-forward, and get a response
           echo "Waiting for VS Agent to be ready..."
-          for i in {1..30}; do
+          for i in {1..5}; do
             # 1. Try to start port-forward if not already running
             if ! pgrep -f "port-forward.*3002:3000" > /dev/null; then
               # Try several possible service names
