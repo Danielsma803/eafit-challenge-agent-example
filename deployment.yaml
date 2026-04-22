@@ -87,6 +87,8 @@ chatbot:
       value: "openai"
     - name: OPENAI_MODEL
       value: "gpt-4o-mini"
+    - name: OPENAI_BASE_URL
+      value: "https://api.openai.com/v1"
     - name: VECTOR_STORE
       value: "redis"
     - name: VECTOR_INDEX_NAME

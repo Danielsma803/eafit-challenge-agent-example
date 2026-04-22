@@ -132,11 +132,19 @@ jobs:
           export RELEASE_NAME CHART_NAMESPACE WALLET_KEY MCP_KEY
           export OPENAI_API_KEY="${{ secrets.EXAMPLE_AGENT_OPENAI_API_KEY }}"
           export POSTGRES_PASSWORD="${{ secrets.EXAMPLE_AGENT_POSTGRES_PASSWORD }}"
+          if [ -z "$POSTGRES_PASSWORD" ]; then
+            POSTGRES_PASSWORD="changeme"
+            echo "::warning::EXAMPLE_AGENT_POSTGRES_PASSWORD missing — using 'changeme'"
+          fi
 
           yq -i '
             .credentialDefinitionId = env(CREDENTIAL_DEFINITION_ID) |
+            (.chatbot.env[] | select(.name == "LLM_PROVIDER")).value = env(LLM_PROVIDER) |
+            (.chatbot.env[] | select(.name == "OPENAI_MODEL")).value = env(OPENAI_MODEL) |
+            (.chatbot.env[] | select(.name == "OPENAI_BASE_URL")).value = env(OPENAI_BASE_URL) |
+            (.chatbot.env[] | select(.name == "LOG_LEVEL")).value = env(LOG_LEVEL) |
             (.chatbot.env[] | select(.name == "REDIS_URL")).value = "redis://" + env(RELEASE_NAME) + "-redis." + env(CHART_NAMESPACE) + ":6379" |
-            (.chatbot.env[] | select(.name == "VS_AGENT_ADMIN_URL")).value = "http://" + env(RELEASE_NAME) + "-example-agent." + env(CHART_NAMESPACE) + ":3000" |
+            (.chatbot.env[] | select(.name == "VS_AGENT_ADMIN_URL")).value = "http://" + env(RELEASE_NAME) + "-agent." + env(CHART_NAMESPACE) + ":3000" |
             (.chatbot.env[] | select(.name == "POSTGRES_HOST")).value = env(RELEASE_NAME) + "-postgres." + env(CHART_NAMESPACE) |
             .chatbot.secret.OPENAI_API_KEY = env(OPENAI_API_KEY) |
             .chatbot.secret.MCP_CONFIG_ENCRYPTION_KEY = env(MCP_KEY) |
@@ -153,13 +161,7 @@ jobs:
           helm upgrade --install "$RELEASE_NAME" "$CHART_SOURCE" \
             --version "$CHART_VERSION" \
             --namespace "$CHART_NAMESPACE" \
-            --values /tmp/helm-values.yaml \
-            --set chatbot.env[0].name=LLM_PROVIDER \
-            --set chatbot.env[0].value="${LLM_PROVIDER}" \
-            --set chatbot.env[1].name=OPENAI_MODEL \
-            --set chatbot.env[1].value="${OPENAI_MODEL}" \
-            --set chatbot.env[2].name=OPENAI_BASE_URL \
-            --set chatbot.env[2].value="${OPENAI_BASE_URL}"
+            --values /tmp/helm-values.yaml
 
       - name: Restart chatbot to pick up ConfigMap changes
         if: inputs.step == 'deploy' || inputs.step == 'all'
