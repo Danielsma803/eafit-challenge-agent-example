@@ -105,9 +105,12 @@ llm:
 
 rag:
   provider: langchain
+  model: nomic-embed-text
   docsPath: /app/rag/docs
   # remoteUrls:
   #   - https://raw.githubusercontent.com/verana-labs/eafit-challenge-agent-example/main/docs/README.md
+  chunkSize: 1000
+  chunkOverlap: 200
   vectorStore:
     type: redis
     indexName: example_agent
